@@ -35,6 +35,40 @@
           }
         }
       }
+    },
+    "/myip": {
+      "get": {
+        "summary": "Get my ip address",
+        "responses": {
+          "200": {
+            "description": "successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/myclient": {
+      "get": {
+        "summary": "Get various information about my http client",
+        "responses": {
+          "200": {
+            "description": "successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#components/schemas/ClientInfo"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -60,6 +94,19 @@
             "type": "string",
             "format": "date-time",
             "description": "{{appcode}} software build date"
+          }
+        }
+      },
+      "ClientInfo": {
+        "type": "object",
+        "properties": {
+          "clientIP": {
+            "type": "string",
+            "description": "your IP address"
+          },
+          "userAgent": {
+            "type": "string",
+            "description": "your user agent information given to the server"
           }
         }
       }

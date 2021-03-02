@@ -19,12 +19,20 @@ import akka.http.scaladsl.model._
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.Route
 import de.heikoseeberger.akkahttpjson4s.Json4sSupport._
+import org.slf4j.LoggerFactory
 import spy.ServiceDependencies
 import spy.tools.DateTimeTools
 
 import java.util.UUID
 
+case class ClientInfo(
+  clientIP: String,
+  userAgent: String
+)
+
 case class SpyRouting(dependencies: ServiceDependencies) extends Routing with DateTimeTools {
+  private val logger = LoggerFactory.getLogger(getClass)
+
   val apiURL = dependencies.config.spy.site.apiURL
   val meta = dependencies.config.spy.metaInfo
   val startedDate = now()
@@ -32,8 +40,12 @@ case class SpyRouting(dependencies: ServiceDependencies) extends Routing with Da
 
   implicit val ec = scala.concurrent.ExecutionContext.global
 
+  private def getClientIP(clientIP: RemoteAddress) = {
+    clientIP.toOption.map(_.getHostAddress).getOrElse("unknown")
+  }
+
   override def routes: Route = pathPrefix("api") {
-    concat(info)
+    concat(info, myip, myclient)
   }
 
   def info: Route = {
@@ -47,6 +59,41 @@ case class SpyRouting(dependencies: ServiceDependencies) extends Routing with Da
             "buildDate" -> meta.buildDateTime
           )
         )
+      }
+    }
+  }
+
+  def myclient: Route = {
+    path("myclient") {
+      get {
+        headerValueByName(headerName = "User-Agent") { userAgent =>
+          extractClientIP { clientIP =>
+            respondWithHeaders(noClientCacheHeaders) {
+              complete {
+                val info = ClientInfo(clientIP = getClientIP(clientIP), userAgent = userAgent)
+                logger.info(s"ClientInfo returned to client : $info")
+                info
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+
+  def myip: Route = {
+    path("myip") {
+      get {
+        extractClientIP { clientIP =>
+          respondWithHeaders(noClientCacheHeaders) {
+            complete {
+              val ip = getClientIP(clientIP)
+              logger.info(s"IP returned to client : $ip")
+              ip
+            }
+          }
+        }
       }
     }
   }
