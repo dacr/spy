@@ -56,7 +56,7 @@ case class Behavior(
 )
 
 // Automatically populated by the build process from a generated config file
-case class WebEchoMetaConfig(
+case class SpyMetaConfig(
   projectName: Option[String],
   projectGroup: Option[String],
   projectPage: Option[String],
@@ -75,7 +75,7 @@ case class SpyConfig(
   site:SiteConfig,
   content:Content,
   behavior: Behavior,
-  metaInfo: WebEchoMetaConfig
+  metaInfo: SpyMetaConfig
 )
 
 // ---------------------------------------------------------------------------------------------------------------------

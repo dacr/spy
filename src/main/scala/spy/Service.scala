@@ -33,7 +33,7 @@ case class Service(dependencies: ServiceDependencies, servicesRoutes: ServiceRou
   private val logger: Logger = org.slf4j.LoggerFactory.getLogger(appCode)
   logger.info(s"$appCode service version $version is starting")
 
-  val config = ConfigFactory.load() // akka specific config is accessible under the path named 'web-echo'
+  val config = ConfigFactory.load() // akka specific config is accessible under the path named 'spy'
   implicit val system: ActorSystem = akka.actor.ActorSystem(s"akka-http-$appCode-system", config.getConfig("spy"))
   implicit val executionContext: ExecutionContextExecutor = system.dispatcher
 

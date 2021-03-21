@@ -1,6 +1,6 @@
 # ![](images/logo-base-32.png) spy service [![][SpyMvnImg]][SpyMvnLnk]
 
-It has been deployed on https://mapland.fr/spy
+It has been deployed on [https://mapland.fr/spy][deployed]
 
 
 ## Quick local start

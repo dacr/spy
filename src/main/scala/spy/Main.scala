@@ -19,11 +19,11 @@ import ch.qos.logback.classic.util.ContextInitializer
 import org.slf4j.Logger
 
 object Main {
-  System.setProperty(ContextInitializer.CONFIG_FILE_PROPERTY, "primes/logback.xml")
+  System.setProperty(ContextInitializer.CONFIG_FILE_PROPERTY, "spy/logback.xml")
 
   def start(): Service = {
-    val logger: Logger = org.slf4j.LoggerFactory.getLogger("PrimesMain")
-    logger.info(s"primes application is starting")
+    val logger: Logger = org.slf4j.LoggerFactory.getLogger("SpyMain")
+    logger.info(s"spy application is starting")
     val dependencies = ServiceDependencies.defaults
     val serviceRoutes = ServiceRoutes(dependencies)
     Service(dependencies, serviceRoutes)
