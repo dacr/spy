@@ -15,15 +15,18 @@
  */
 package spy.routing
 
-import akka.http.scaladsl.model.HttpHeader
-import akka.http.scaladsl.model.headers.CacheDirectives.{`max-age`, `must-revalidate`, `no-cache`, `no-store`}
-import akka.http.scaladsl.model.headers.`Cache-Control`
+import akka.http.scaladsl.model.{DateTime, HttpHeader}
+import akka.http.scaladsl.model.headers.CacheDirectives.{`max-age`, `must-revalidate`, `no-cache`, `no-store`, `proxy-revalidate`}
+import akka.http.scaladsl.model.headers.{Expires, `Cache-Control`, `Last-Modified`}
 import akka.http.scaladsl.server.Route
 import spy.tools.JsonImplicits
+
+import java.util.Date
 
 trait Routing extends JsonImplicits {
   def routes: Route
 
-  val noClientCacheHeaders: List[HttpHeader] = List(`Cache-Control`(`no-cache`, `no-store`, `max-age`(0), `must-revalidate`))
-  val clientCacheHeaders: List[HttpHeader] = List(`Cache-Control`(`max-age`(86400)))
+  val noClientCacheHeaders: List[HttpHeader] = List(`Cache-Control`(`no-store`))
+
+  val clientCacheHeaders: List[HttpHeader] = List(`Cache-Control`(`max-age`(3600), `must-revalidate`, `proxy-revalidate`))
 }
