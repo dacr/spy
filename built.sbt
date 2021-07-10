@@ -7,6 +7,8 @@ scmInfo := Some(ScmInfo(url(s"https://github.com/dacr/spy.git"), s"git@github.co
 Compile / mainClass := Some("spy.Main")
 packageBin / mainClass := Some("spy.Main")
 
+versionScheme := Some("semver-spec")
+
 scalaVersion := "2.13.6"
 
 scalacOptions := Seq("-unchecked", "-deprecation", "-encoding", "utf8", "-feature")
