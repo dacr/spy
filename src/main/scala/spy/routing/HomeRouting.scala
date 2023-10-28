@@ -1,10 +1,10 @@
 package spy.routing
 
-import akka.http.scaladsl.model.HttpCharsets._
-import akka.http.scaladsl.model.{HttpEntity, HttpResponse}
-import akka.http.scaladsl.model.MediaTypes.`text/html`
-import akka.http.scaladsl.server.Directives._
-import akka.http.scaladsl.server.Route
+import org.apache.pekko.http.scaladsl.model.HttpCharsets._
+import org.apache.pekko.http.scaladsl.model.{HttpEntity, HttpResponse}
+import org.apache.pekko.http.scaladsl.model.MediaTypes.`text/html`
+import org.apache.pekko.http.scaladsl.server.Directives._
+import org.apache.pekko.http.scaladsl.server.Route
 import spy.ServiceDependencies
 import spy.templates.html.HomeTemplate
 

@@ -15,10 +15,10 @@
  */
 package spy.routing
 
-import akka.http.scaladsl.model.{DateTime, HttpHeader}
-import akka.http.scaladsl.model.headers.CacheDirectives.{`max-age`, `must-revalidate`, `no-cache`, `no-store`, `proxy-revalidate`}
-import akka.http.scaladsl.model.headers.{Expires, `Cache-Control`, `Last-Modified`}
-import akka.http.scaladsl.server.Route
+import org.apache.pekko.http.scaladsl.model.{DateTime, HttpHeader}
+import org.apache.pekko.http.scaladsl.model.headers.CacheDirectives.{`max-age`, `must-revalidate`, `no-cache`, `no-store`, `proxy-revalidate`}
+import org.apache.pekko.http.scaladsl.model.headers.{Expires, `Cache-Control`, `Last-Modified`}
+import org.apache.pekko.http.scaladsl.server.Route
 import spy.tools.JsonImplicits
 
 import java.util.Date
