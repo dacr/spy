@@ -1,53 +1,39 @@
 name         := "spy"
 organization := "fr.janalyse"
-homepage     := Some(new URL("https://github.com/dacr/spy"))
+description  := "I'm not what you might think"
 
 licenses += "NON-AI-APACHE2" -> url(s"https://github.com/non-ai-licenses/non-ai-licenses/blob/main/NON-AI-APACHE2")
 
-scmInfo := Some(ScmInfo(url(s"https://github.com/dacr/spy.git"), s"git@github.com:dacr/spy.git"))
-
-Compile / mainClass    := Some("spy.Main")
-packageBin / mainClass := Some("spy.Main")
-
-versionScheme := Some("semver-spec")
-
-scalaVersion := "2.13.12"
+scalaVersion := "2.13.15"
 
 scalacOptions := Seq("-unchecked", "-deprecation", "-encoding", "utf8", "-feature")
 
-Test / testOptions += {
-  val rel = scalaVersion.value.split("[.]").take(2).mkString(".")
-  Tests.Argument(
-    "-oDF", // -oW to remove colors
-    "-u",
-    s"target/junitresults/scala-$rel/"
-  )
-}
-
 lazy val versions = new {
   // client side dependencies
-  val swaggerui = "4.19.1"
-  val bootstrap = "5.3.2"
+  val swaggerui = "5.17.14"
+  val bootstrap = "5.3.3"
   val jquery    = "3.7.1"
+  val awesome   = "6.5.2"
 
   // server side dependencies
-  val pureConfig      = "0.17.4"
-  val pekko           = "1.0.1"
-  val pekkoHttp       = "1.0.0"
-  val pekkoHttpJson4s = "2.1.1"
-  val json4s          = "4.0.6"
-  val logback         = "1.4.11"
-  val slf4j           = "2.0.9"
-  val scalatest       = "3.2.17"
-  val webjarsLocator  = "0.48"
-  val commonsio       = "2.11.0"
+  val pureConfig      = "0.17.7"
+  val pekko           = "1.1.1"
+  val pekkoHttp       = "1.1.0"
+  val pekkoHttpJson4s = "3.0.0"
+  val json4s          = "4.0.7"
+  val logback         = "1.5.8"
+  val slf4j           = "2.0.16"
+  val scalatest       = "3.2.19"
+  val commonsio       = "2.17.0"
+  val webjarsLocator  = "0.52"
 }
 
 // client side dependencies
 libraryDependencies ++= Seq(
-  "org.webjars" % "swagger-ui" % versions.swaggerui,
-  "org.webjars" % "bootstrap"  % versions.bootstrap,
-  "org.webjars" % "jquery"     % versions.jquery
+  "org.webjars" % "swagger-ui"   % versions.swaggerui,
+  "org.webjars" % "bootstrap"    % versions.bootstrap,
+  "org.webjars" % "jquery"       % versions.jquery,
+  "org.webjars" % "font-awesome" % versions.awesome
 )
 
 // server side dependencies
@@ -71,12 +57,28 @@ libraryDependencies ++= Seq(
   "org.webjars"            % "webjars-locator"      % versions.webjarsLocator
 )
 
-enablePlugins(JavaServerAppPackaging)
+Compile / mainClass    := Some("spy.Main")
+packageBin / mainClass := Some("spy.Main")
 
+Test / testOptions += {
+  val rel = scalaVersion.value.split("[.]").take(2).mkString(".")
+  Tests.Argument(
+    "-oDF", // -oW to remove colors
+    "-u",
+    s"target/junitresults/scala-$rel/"
+  )
+}
+
+enablePlugins(JavaServerAppPackaging)
 enablePlugins(SbtTwirl)
 
-// TODO - to remove when twirl will be available for scala3
-libraryDependencies := libraryDependencies.value.map {
-  case module if module.name == "twirl-api" => module.cross(CrossVersion.for3Use2_13)
-  case module                               => module
-}
+homepage   := Some(url("https://github.com/dacr/spy"))
+scmInfo    := Some(ScmInfo(url(s"https://github.com/dacr/spy.git"), s"git@github.com:dacr/spy.git"))
+developers := List(
+  Developer(
+    id = "dacr",
+    name = "David Crosson",
+    email = "crosson.david@gmail.com",
+    url = url("https://github.com/dacr")
+  )
+)
