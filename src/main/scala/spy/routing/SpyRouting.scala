@@ -15,15 +15,16 @@
  */
 package spy.routing
 
-import org.apache.pekko.http.scaladsl.model._
-import org.apache.pekko.http.scaladsl.server.Directives._
+import org.apache.pekko.http.scaladsl.model.*
+import org.apache.pekko.http.scaladsl.server.Directives.*
 import org.apache.pekko.http.scaladsl.server.Route
-import com.github.pjfanning.pekkohttpjson4s.Json4sSupport._
+import com.github.pjfanning.pekkohttpjson4s.Json4sSupport.*
 import org.slf4j.LoggerFactory
 import spy.ServiceDependencies
 import spy.tools.DateTimeTools
 
 import java.util.UUID
+import scala.concurrent.ExecutionContextExecutor
 
 case class ClientInfo(
   clientIP: String,
@@ -38,7 +39,7 @@ case class SpyRouting(dependencies: ServiceDependencies) extends Routing with Da
   val startedDate = now()
   val instanceUUID = UUID.randomUUID().toString
 
-  implicit val ec = scala.concurrent.ExecutionContext.global
+  implicit val ec: ExecutionContextExecutor = scala.concurrent.ExecutionContext.global
 
   private def getClientIP(clientIP: RemoteAddress) = {
     clientIP.toOption.map(_.getHostAddress).getOrElse("unknown")
