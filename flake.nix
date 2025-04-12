@@ -77,6 +77,9 @@
         };
       };
       config = lib.mkIf config.services.spy.enable {
+        systemd.tmpfiles.rules = [
+              "d ${config.services.spy.datastore} 0750 ${config.services.spy.user} ${config.services.spy.user} -"
+        ];
         systemd.services.spy = {
           description = "Record your json data coming from websockets or webhooks";
           environment = {
@@ -85,15 +88,9 @@
             SPY_URL         = config.services.spy.url;
             SPY_STORE_PATH  = config.services.spy.datastore;
           };
-          preStart = ''
-            ${pkgs.toybox}/bin/mkdir -p ${config.services.spy.datastore}
-            ${pkgs.toybox}/bin/chown ${config.services.spy.user}:${config.services.spy.user} ${config.services.spy.datastore}
-          '';
           serviceConfig = {
             ExecStart = "${self.packages.${pkgs.system}.default}/bin/nix-spy";
             User = config.services.spy.user;
-            StateDirectory = config.services.spy.datastore;
-            StateDirectoryMode = "0750";
             Restart = "on-failure";
           };
           wantedBy = [ "multi-user.target" ];
