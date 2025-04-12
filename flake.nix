@@ -54,6 +54,11 @@
             type = lib.types.str;
             description = "User name that will run the spy service";
           };
+          ip = lib.mkOption {
+            type = lib.types.str;
+            description = "Listening network interface - 0.0.0.0 for all interfaces";
+            default = "127.0.0.1";
+          };
           port = lib.mkOption {
             type = lib.types.int;
             description = "Service spy listing port";
@@ -83,6 +88,7 @@
         systemd.services.spy = {
           description = "Spy service";
           environment = {
+            SPY_LISTEN_IP   = config.services.spy.ip;
             SPY_LISTEN_PORT = (toString config.services.spy.port);
             SPY_PREFIX      = config.services.spy.prefix;
             SPY_URL         = config.services.spy.url;
