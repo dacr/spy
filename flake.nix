@@ -22,7 +22,7 @@
     packages.default = sbt.mkSbtDerivation.${system} {
       pname = "nix-spy";
       version = builtins.elemAt (builtins.match ''[^"]+"(.*)".*'' (builtins.readFile ./version.sbt)) 0;
-      depsSha256 = "";
+      depsSha256 = "sha256-JPT8jnAap5tUu4oEUuBrMBuP/BWgi7NcKwiRjgZq2uA=";
 
       src = ./.;
 

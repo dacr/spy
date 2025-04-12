@@ -83,3 +83,6 @@ developers := List(
     url = url("https://github.com/dacr")
   )
 )
+
+Universal / topLevelDirectory := None
+Universal / packageName       := s"${name.value}"
