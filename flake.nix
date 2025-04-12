@@ -81,7 +81,7 @@
               "d ${config.services.spy.datastore} 0750 ${config.services.spy.user} ${config.services.spy.user} -"
         ];
         systemd.services.spy = {
-          description = "Record your json data coming from websockets or webhooks";
+          description = "Spy service";
           environment = {
             SPY_LISTEN_PORT = (toString config.services.spy.port);
             SPY_PREFIX      = config.services.spy.prefix;
