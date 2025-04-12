@@ -92,6 +92,8 @@
           serviceConfig = {
             ExecStart = "${self.packages.${pkgs.system}.default}/bin/nix-spy";
             User = config.services.spy.user;
+            StateDirectory = config.services.spy.datastore;
+            StateDirectoryMode = "0750";
             Restart = "on-failure";
           };
           wantedBy = [ "multi-user.target" ];
