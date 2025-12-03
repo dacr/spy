@@ -18,7 +18,7 @@ package spy
 
 import org.apache.pekko.http.scaladsl.server.Directives._
 import org.apache.pekko.http.scaladsl.server.Route
-import spy.routing.{AdminRouting, AssetsRouting, HomeRouting, SpyRouting, SwaggerRouting}
+import spy.routing.{AdminRouting, AssetsRouting, HomeRouting, SpyRouting}
 
 /**
  * Prepare (reduce & prefix) service routes
@@ -31,8 +31,7 @@ case class ServiceRoutes(dependencies: ServiceDependencies) {
     SpyRouting(dependencies),
     HomeRouting(dependencies),
     AdminRouting(dependencies),
-    AssetsRouting(dependencies),
-    SwaggerRouting(dependencies)
+    AssetsRouting(dependencies)
   ).map(_.routes).reduce(_ ~ _)
 
   val routes: Route =

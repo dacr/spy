@@ -26,6 +26,7 @@ lazy val versions = new {
   val scalatest       = "3.2.19"
   val commonsio       = "2.19.0"
   val webjarsLocator  = "0.52"
+  val tapir           = "1.11.11"
 }
 
 // client side dependencies
@@ -38,21 +39,24 @@ libraryDependencies ++= Seq(
 
 // server side dependencies
 libraryDependencies ++= Seq(
-  "com.github.pureconfig" %% "pureconfig-core"      % versions.pureConfig,
-  "org.json4s"            %% "json4s-jackson"       % versions.json4s,
-  "org.json4s"            %% "json4s-ext"           % versions.json4s,
-  "org.apache.pekko"      %% "pekko-actor-typed"    % versions.pekko,
-  "org.apache.pekko"      %% "pekko-http"           % versions.pekkoHttp,
-  "org.apache.pekko"      %% "pekko-http-caching"   % versions.pekkoHttp,
-  "org.apache.pekko"      %% "pekko-stream"         % versions.pekko,
-  "org.apache.pekko"      %% "pekko-slf4j"          % versions.pekko,
-  "org.apache.pekko"      %% "pekko-testkit"        % versions.pekko     % Test,
-  "org.apache.pekko"      %% "pekko-stream-testkit" % versions.pekko     % Test,
-  "org.apache.pekko"      %% "pekko-http-testkit"   % versions.pekkoHttp % Test,
-  "com.github.pjfanning"  %% "pekko-http-json4s"    % versions.pekkoHttpJson4s,
-  "org.slf4j"              % "slf4j-api"            % versions.slf4j,
-  "ch.qos.logback"         % "logback-classic"      % versions.logback,
-  "commons-io"             % "commons-io"           % versions.commonsio,
+  "com.github.pureconfig"       %% "pureconfig-core"         % versions.pureConfig,
+  "org.json4s"                  %% "json4s-jackson"          % versions.json4s,
+  "org.json4s"                  %% "json4s-ext"              % versions.json4s,
+  "org.apache.pekko"            %% "pekko-actor-typed"       % versions.pekko,
+  "org.apache.pekko"            %% "pekko-http"              % versions.pekkoHttp,
+  "org.apache.pekko"            %% "pekko-http-caching"      % versions.pekkoHttp,
+  "org.apache.pekko"            %% "pekko-stream"            % versions.pekko,
+  "org.apache.pekko"            %% "pekko-slf4j"             % versions.pekko,
+  "org.apache.pekko"            %% "pekko-testkit"           % versions.pekko     % Test,
+  "org.apache.pekko"            %% "pekko-stream-testkit"    % versions.pekko     % Test,
+  "org.apache.pekko"            %% "pekko-http-testkit"      % versions.pekkoHttp % Test,
+  "com.github.pjfanning"        %% "pekko-http-json4s"       % versions.pekkoHttpJson4s,
+  "org.slf4j"                    % "slf4j-api"               % versions.slf4j,
+  "ch.qos.logback"               % "logback-classic"         % versions.logback,
+  "commons-io"                   % "commons-io"              % versions.commonsio,
+  "com.softwaremill.sttp.tapir" %% "tapir-pekko-http-server" % versions.tapir,
+  "com.softwaremill.sttp.tapir" %% "tapir-json-json4s"       % versions.tapir,
+  "com.softwaremill.sttp.tapir" %% "tapir-swagger-ui-bundle" % versions.tapir,
 
   "org.scalatest"         %% "scalatest"            % versions.scalatest % Test,
   "org.webjars"            % "webjars-locator"      % versions.webjarsLocator

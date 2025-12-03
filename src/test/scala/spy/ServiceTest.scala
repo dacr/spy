@@ -52,6 +52,18 @@ class ServiceTest extends AnyWordSpec with should.Matchers with ScalatestRouteTe
         responseAs[String] should include regex "SPY"
       }
     }
+    "Respond to info request" in {
+      Get("/api/info") ~> routes ~> check {
+        import com.github.pjfanning.pekkohttpjson4s.Json4sSupport._
+        responseAs[spy.routing.ServiceInfo].version should not be empty
+      }
+    }
+    "Respond to myip request" in {
+      Get("/api/myip") ~> routes ~> check {
+        import com.github.pjfanning.pekkohttpjson4s.Json4sSupport._
+        responseAs[String] shouldBe "unknown" // Since no headers provided
+      }
+    }
   }
 }
 
