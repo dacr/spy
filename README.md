@@ -1,4 +1,4 @@
-# ![](images/logo-base-32.png) spy service ![tests][tests-workflow] [![License][licenseImg]][licenseLink] [![][SpyMvnImg]][SpyMvnLnk]
+# ![](images/logo-base-32.png) spy service [![License][licenseImg]][licenseLink] [![][SpyMvnImg]][SpyMvnLnk]
 
 It has been deployed on [https://mapland.fr/spy][deployed]
 
@@ -30,8 +30,6 @@ scala-cli --dep fr.janalyse::spy:1.0.7 -e 'spy.Main.main(args)'
 [Spy]:       https://github.com/dacr/spy
 [SpyMvnImg]: https://img.shields.io/maven-central/v/fr.janalyse/spy_2.13.svg
 [SpyMvnLnk]: https://search.maven.org/#search%7Cga%7C1%7Cfr.janalyse.spy
-
-[tests-workflow]: https://github.com/dacr/spy/actions/workflows/scala.yml/badge.svg
 
 [licenseImg]: https://img.shields.io/github/license/dacr/spy.svg
 [licenseLink]: LICENSE
