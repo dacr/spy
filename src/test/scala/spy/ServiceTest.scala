@@ -184,6 +184,111 @@ class ServiceTest extends AnyWordSpec with should.Matchers with ScalatestRouteTe
         info.proxy.peerAddress shouldBe Some("10.0.0.1")
       }
     }
+    "Report the client TLS session and HTTP version forwarded by a nginx reverse proxy" in {
+      val clientCertPem =
+        """-----BEGIN CERTIFICATE-----
+          |MIIBczCCARmgAwIBAgIIOvMaa7YbX74wCgYIKoZIzj0EAwMwLjESMBAGA1UEChMJ
+          |U3B5IFRlc3RzMRgwFgYDVQQDEw9zcHktdGVzdC1jbGllbnQwHhcNMjYxMTE5MDgw
+          |NDAyWhcNMzYxMTE2MDgwNDAyWjAuMRIwEAYDVQQKEwlTcHkgVGVzdHMxGDAWBgNV
+          |BAMTD3NweS10ZXN0LWNsaWVudDBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABCgo
+          |VmZgmABW16SB2xwca8G0/rZ0FDaOyRvXgFDP9hBdyowTZJt+qSrXdfNFzTGYucdU
+          |53Mc1sn8A7ek9OZEXG6jITAfMB0GA1UdDgQWBBRFdCGhtRUeLuDo3SpAXH4W6lWo
+          |czAKBggqhkjOPQQDAwNIADBFAiBk/W7GPKX+Vl7uXigcckEdnmw+cNnwqRsrOA2c
+          |ZQTyiwIhANye4VMiVw6R4vs3YclLoVj1LhmqByFnEoYiVPYYyeyM
+          |-----END CERTIFICATE-----
+          |""".stripMargin
+      val request       = Get("http://spy.code-examples.org/api/myclient")
+        .withHeaders(
+          RawHeader("X-Forwarded-For", "203.0.113.7"),
+          RawHeader("X-Forwarded-Proto", "https"),
+          RawHeader("X-Forwarded-Http-Version", "HTTP/2.0"),
+          RawHeader("X-SSL-Protocol", "TLSv1.3"),
+          RawHeader("X-SSL-Cipher", "TLS_AES_256_GCM_SHA384"),
+          RawHeader("X-SSL-Server-Name", "spy.code-examples.org"),
+          RawHeader("X-SSL-Session-Reused", "."),
+          RawHeader("X-SSL-ALPN", "h2"),
+          RawHeader("X-SSL-Curve", "X25519MLKEM768"),
+          RawHeader("X-SSL-Client-Ciphers", "TLS_AES_128_GCM_SHA256:TLS_CHACHA20_POLY1305_SHA256:0x00ff"),
+          RawHeader("X-SSL-Client-Curves", "X25519:prime256v1:secp384r1"),
+          RawHeader("X-SSL-Client-Verify", "SUCCESS"),
+          RawHeader("X-SSL-Client-Cert", java.net.URLEncoder.encode(clientCertPem, "UTF-8"))
+        )
+        .addAttribute(AttributeKeys.remoteAddress, RemoteAddress(InetAddress.getLoopbackAddress, Some(60036)))
+      request ~> routes ~> check {
+        import com.github.pjfanning.pekkohttpjsoniterscala.JsoniterScalaSupport.*
+        val info = responseAs[ClientInfo]
+        info.connection.protocol shouldBe Some("HTTP/2.0")
+        info.connection.secure shouldBe Some(true)
+        val tls  = info.tls.get
+        tls.source shouldBe "reverse-proxy"
+        tls.protocol shouldBe Some("TLSv1.3")
+        tls.cipherSuite shouldBe Some("TLS_AES_256_GCM_SHA384")
+        tls.serverNames shouldBe List("spy.code-examples.org")
+        tls.sessionReused shouldBe Some(false)
+        tls.alpn shouldBe Some("h2")
+        tls.curve shouldBe Some("X25519MLKEM768")
+        tls.clientCiphers shouldBe List("TLS_AES_128_GCM_SHA256", "TLS_CHACHA20_POLY1305_SHA256", "0x00ff")
+        tls.clientCurves shouldBe List("X25519", "prime256v1", "secp384r1")
+        tls.clientCertificateVerify shouldBe Some("SUCCESS")
+        tls.peerPrincipal shouldBe Some("CN=spy-test-client,O=Spy Tests")
+        val cert = tls.peerCertificates.head
+        cert.serialNumber shouldBe Some("3af31a6bb61b5fbe")
+        cert.publicKeyAlgorithm shouldBe Some("EC")
+        cert.fingerprintSha1 shouldBe defined
+      }
+    }
+    "Use client certificate DN headers when the certificate itself is not forwarded" in {
+      val request = Get("/api/myclient")
+        .withHeaders(
+          RawHeader("X-Real-IP", "203.0.113.8"),
+          RawHeader("X-SSL-Protocol", "TLSv1.2"),
+          RawHeader("X-SSL-Client-S-DN", "CN=alice,O=Example"),
+          RawHeader("X-SSL-Client-I-DN", "CN=Example CA"),
+          RawHeader("X-SSL-Client-Serial", "01AB")
+        )
+      request ~> routes ~> check {
+        import com.github.pjfanning.pekkohttpjsoniterscala.JsoniterScalaSupport.*
+        val tls = responseAs[ClientInfo].tls.get
+        tls.peerPrincipal shouldBe Some("CN=alice,O=Example")
+        tls.peerCertificates.map(c => (c.issuer, c.serialNumber)) shouldBe List((Some("CN=Example CA"), Some("01AB")))
+      }
+    }
+    "Accept the header names used by the thorgal nginx configuration" in {
+      val request = Get("http://spy.code-examples.org/api/myclient")
+        .withHeaders(
+          RawHeader("X-Real-IP", "203.0.113.9"),
+          RawHeader("X-Forwarded-For", "203.0.113.9"),
+          RawHeader("X-Forwarded-Proto", "https"),
+          RawHeader("X-Forwarded-Host", "spy.code-examples.org"),
+          RawHeader("X-Forwarded-Server", "thorgal"),
+          RawHeader("X-Real-Port", "51000"),
+          RawHeader("X-Client-HTTP-Version", "HTTP/2.0"),
+          RawHeader("X-Client-TLS-Protocol", "TLSv1.3"),
+          RawHeader("X-Client-TLS-Cipher", "TLS_AES_128_GCM_SHA256"),
+          RawHeader("X-Client-TLS-SNI", "spy.code-examples.org"),
+          RawHeader("X-SSL-Session-Reused", "r"),
+          RawHeader("X-SSL-ALPN", "h2")
+        )
+        .addAttribute(AttributeKeys.remoteAddress, RemoteAddress(InetAddress.getLoopbackAddress, Some(60036)))
+      request ~> routes ~> check {
+        import com.github.pjfanning.pekkohttpjsoniterscala.JsoniterScalaSupport.*
+        val info = responseAs[ClientInfo]
+        info.connection.remoteAddress shouldBe Some("203.0.113.9")
+        info.connection.remotePort shouldBe Some(51000)
+        info.connection.protocol shouldBe Some("HTTP/2.0")
+        info.request.url shouldBe "https://spy.code-examples.org/api/myclient"
+        info.tls.map(t => (t.source, t.protocol, t.cipherSuite, t.serverNames, t.sessionReused, t.alpn)) shouldBe
+          Some(("reverse-proxy", Some("TLSv1.3"), Some("TLS_AES_128_GCM_SHA256"), List("spy.code-examples.org"), Some(true), Some("h2")))
+        info.proxy.peerAddress shouldBe Some("127.0.0.1")
+        info.proxy.peerProtocol shouldBe Some("HTTP/1.1")
+      }
+    }
+    "Ignore TLS headers when not behind a proxy" in {
+      Get("/api/myclient").withHeaders(RawHeader("X-SSL-Protocol", "TLSv1.3")) ~> routes ~> check {
+        import com.github.pjfanning.pekkohttpjsoniterscala.JsoniterScalaSupport.*
+        responseAs[ClientInfo].tls shouldBe None
+      }
+    }
     "Keep the TCP peer as the client connection when not behind a proxy" in {
       Get("/api/myclient").addAttribute(AttributeKeys.remoteAddress, RemoteAddress(InetAddress.getByName("192.168.1.20"), Some(50000))) ~> routes ~> check {
         import com.github.pjfanning.pekkohttpjsoniterscala.JsoniterScalaSupport.*

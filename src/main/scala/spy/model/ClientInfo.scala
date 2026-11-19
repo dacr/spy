@@ -222,19 +222,33 @@ case class TracingDetails(
 
 case class CertificateInfo(
   subject: String,
-  issuer: String,
-  serialNumber: String,
-  notBefore: String,
-  notAfter: String,
-  signatureAlgorithm: String,
-  publicKeyAlgorithm: String
+  issuer: Option[String],
+  serialNumber: Option[String],
+  notBefore: Option[String],
+  notAfter: Option[String],
+  signatureAlgorithm: Option[String],
+  publicKeyAlgorithm: Option[String],
+  fingerprintSha1: Option[String]
 )
 
+/** The client TLS session, either terminated by spy itself (source "connection") or by a reverse proxy which
+  * forwards its details through X-SSL-* headers (source "reverse-proxy").
+  */
 case class TlsDetails(
+  source: String,
   protocol: Option[String],
   cipherSuite: Option[String],
   sessionId: Option[String],
+  sessionReused: Option[Boolean],
   serverNames: List[String], // SNI
+  alpn: Option[String],
+  curve: Option[String],
+  earlyData: Option[Boolean],
+  clientCiphers: List[String], // cipher suites offered by the client
+  clientCurves: List[String],  // curves offered by the client
+  ja3: Option[String],
+  ja4: Option[String],
+  clientCertificateVerify: Option[String],
   peerPrincipal: Option[String],
   peerCertificates: List[CertificateInfo],
   localPrincipal: Option[String]

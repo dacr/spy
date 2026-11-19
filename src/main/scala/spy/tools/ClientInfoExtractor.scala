@@ -21,8 +21,12 @@ import spy.model.*
 import sttp.tapir.model.ServerRequest
 
 import java.net.{Inet4Address, Inet6Address, InetAddress}
-import java.security.cert.X509Certificate
-import java.util.HexFormat
+import java.io.ByteArrayInputStream
+import java.net.URLDecoder
+import java.nio.charset.StandardCharsets
+import java.security.MessageDigest
+import java.security.cert.{CertificateFactory, X509Certificate}
+import java.util.{Base64, HexFormat}
 import java.util.concurrent.{CompletableFuture, Executors, TimeUnit}
 import javax.net.ssl.{ExtendedSSLSession, SNIHostName}
 import scala.concurrent.{ExecutionContext, Future}
@@ -87,6 +91,64 @@ class ClientInfoExtractor(reverseDnsLookup: Boolean, reverseDnsTimeoutMs: Long =
       else v
     Option(bare).filter(_.nonEmpty).flatMap(b => Try(InetAddress.ofLiteral(b)).toOption) // ofLiteral never triggers DNS
   }
+
+  /** first defined header among the given aliases */
+  private def hAny(req: ServerRequest, names: List[String]): Option[String] =
+    names.iterator.flatMap(n => h(req, n)).map(_.trim).find(v => v.nonEmpty && v != "-")
+
+  /** HTTP version used by the client to reach the reverse proxy (nginx: $server_protocol) */
+  val clientProtocolHeaders = List("X-Forwarded-Http-Version", "X-Client-HTTP-Version", "X-Http-Version", "X-Client-Protocol")
+
+  /** TLS details forwarded by a reverse proxy, first name is the documented one, others are common aliases */
+  object tlsHeaders {
+    val protocol          = List("X-SSL-Protocol", "X-Client-TLS-Protocol", "X-Forwarded-TLS-Protocol", "X-TLS-Protocol")      // $ssl_protocol
+    val cipher            = List("X-SSL-Cipher", "X-Client-TLS-Cipher", "X-Forwarded-TLS-Cipher", "X-TLS-Cipher")            // $ssl_cipher
+    val sessionId         = List("X-SSL-Session-Id")                                                   // $ssl_session_id
+    val sessionReused     = List("X-SSL-Session-Reused")                                               // $ssl_session_reused
+    val serverName        = List("X-SSL-Server-Name", "X-Client-TLS-SNI", "X-TLS-SNI", "X-Forwarded-TLS-SNI")             // $ssl_server_name
+    val alpn              = List("X-SSL-ALPN", "X-TLS-ALPN")                                           // $ssl_alpn_protocol
+    val curve             = List("X-SSL-Curve")                                                        // $ssl_curve
+    val earlyData         = List("X-SSL-Early-Data", "Early-Data")                                     // $ssl_early_data
+    val clientCiphers     = List("X-SSL-Client-Ciphers")                                               // $ssl_ciphers
+    val clientCurves      = List("X-SSL-Client-Curves")                                                // $ssl_curves
+    val ja3               = List("X-JA3-Fingerprint", "X-JA3", "CF-JA3-Hash")
+    val ja4               = List("X-JA4-Fingerprint", "X-JA4", "CF-JA4")
+    val clientVerify      = List("X-SSL-Client-Verify")                                                // $ssl_client_verify
+    val clientSubject     = List("X-SSL-Client-S-DN", "X-SSL-Client-DN")                               // $ssl_client_s_dn
+    val clientIssuer      = List("X-SSL-Client-I-DN")                                                  // $ssl_client_i_dn
+    val clientSerial      = List("X-SSL-Client-Serial")                                                // $ssl_client_serial
+    val clientNotBefore   = List("X-SSL-Client-V-Start", "X-SSL-Client-NotBefore")                     // $ssl_client_v_start
+    val clientNotAfter    = List("X-SSL-Client-V-End", "X-SSL-Client-NotAfter")                        // $ssl_client_v_end
+    val clientFingerprint = List("X-SSL-Client-Fingerprint")                                           // $ssl_client_fingerprint
+    val clientCert        = List("X-SSL-Client-Cert", "X-Forwarded-TLS-Client-Cert", "X-Client-Cert")  // $ssl_client_escaped_cert
+  }
+
+  def certificateInfo(c: X509Certificate): CertificateInfo =
+    CertificateInfo(
+      subject = c.getSubjectX500Principal.getName,
+      issuer = Some(c.getIssuerX500Principal.getName),
+      serialNumber = Some(c.getSerialNumber.toString(16)),
+      notBefore = Some(c.getNotBefore.toInstant.toString),
+      notAfter = Some(c.getNotAfter.toInstant.toString),
+      signatureAlgorithm = Some(c.getSigAlgName),
+      publicKeyAlgorithm = Some(c.getPublicKey.getAlgorithm),
+      fingerprintSha1 = Try(HexFormat.of().formatHex(MessageDigest.getInstance("SHA-1").digest(c.getEncoded))).toOption
+    )
+
+  /** client certificate forwarded by a proxy : url-escaped PEM (nginx $ssl_client_escaped_cert), raw PEM with
+    * tab separated lines (nginx $ssl_client_cert) or bare base64 DER (traefik, RFC 9440 `:base64:` form)
+    */
+  def parseForwardedCertificate(raw: String): Option[CertificateInfo] = Try {
+    val decoded = if (raw.contains("%")) URLDecoder.decode(raw.replace("+", "%2B"), StandardCharsets.UTF_8) else raw // '+' is a base64 char
+    val body    = decoded.trim.stripPrefix(":").stripSuffix(":")
+    val der     =
+      if (body.contains("-----BEGIN"))
+        Base64.getMimeDecoder.decode(body.replaceAll("-----[^-]*-----", "").replaceAll("\\s", "")) // drop PEM markers
+      else Base64.getMimeDecoder.decode(body.replaceAll("\\s", ""))
+    CertificateFactory.getInstance("X.509").generateCertificate(ByteArrayInputStream(der)) match {
+      case c: X509Certificate => certificateInfo(c)
+    }
+  }.toOption
 
   /** port part of `1.2.3.4:80`, `[2001:db8::1]:443`, `example.com:8080` */
   def portPart(raw: String): Option[Int] = {
@@ -496,8 +558,10 @@ class ClientInfoExtractor(reverseDnsLookup: Boolean, reverseDnsTimeoutMs: Long =
       baggage = h(req, "baggage")
     )
 
-    // -------- TLS (only when TLS is terminated by this service and ssl-session-attribute is enabled)
-    val tls = pekkoContext
+    // -------- TLS
+    // - terminated by spy itself : from the session (requires the ssl-session-attribute pekko setting)
+    // - terminated by a reverse proxy : from the X-SSL-* headers it forwards
+    val connectionTls = pekkoContext
       .flatMap(_.request.attributes.get(AttributeKeys.sslSession))
       .collect { case info: SslSessionInfo => info }
       .filterNot(info => info.session.getProtocol == null || info.session.getProtocol == "NONE") // plain HTTP placeholder session
@@ -508,25 +572,66 @@ class ClientInfoExtractor(reverseDnsLookup: Boolean, reverseDnsTimeoutMs: Long =
           case _                       => Nil
         }
         TlsDetails(
+          source = "connection",
           protocol = Option(session.getProtocol),
           cipherSuite = Option(session.getCipherSuite),
           sessionId = Option(session.getId).filter(_.nonEmpty).map(HexFormat.of().formatHex),
+          sessionReused = None,
           serverNames = sni,
+          alpn = None,
+          curve = None,
+          earlyData = None,
+          clientCiphers = Nil,
+          clientCurves = Nil,
+          ja3 = None,
+          ja4 = None,
+          clientCertificateVerify = None,
           peerPrincipal = info.peerPrincipal.map(_.getName),
-          peerCertificates = info.peerCertificates.collect { case c: X509Certificate =>
-            CertificateInfo(
-              subject = c.getSubjectX500Principal.getName,
-              issuer = c.getIssuerX500Principal.getName,
-              serialNumber = c.getSerialNumber.toString(16),
-              notBefore = c.getNotBefore.toInstant.toString,
-              notAfter = c.getNotAfter.toInstant.toString,
-              signatureAlgorithm = c.getSigAlgName,
-              publicKeyAlgorithm = c.getPublicKey.getAlgorithm
-            )
-          },
+          peerCertificates = info.peerCertificates.collect { case c: X509Certificate => certificateInfo(c) },
           localPrincipal = info.localPrincipal.map(_.getName)
         )
       }
+
+    val forwardedTls = Option.when(proxied) {
+      val forwardedCert = hAny(req, tlsHeaders.clientCert).flatMap(parseForwardedCertificate)
+      val headerCert    = hAny(req, tlsHeaders.clientSubject).map { subject =>
+        CertificateInfo(
+          subject = subject,
+          issuer = hAny(req, tlsHeaders.clientIssuer),
+          serialNumber = hAny(req, tlsHeaders.clientSerial),
+          notBefore = hAny(req, tlsHeaders.clientNotBefore),
+          notAfter = hAny(req, tlsHeaders.clientNotAfter),
+          signatureAlgorithm = None,
+          publicKeyAlgorithm = None,
+          fingerprintSha1 = hAny(req, tlsHeaders.clientFingerprint)
+        )
+      }
+      val certificates  = forwardedCert.orElse(headerCert).toList
+      TlsDetails(
+        source = "reverse-proxy",
+        protocol = hAny(req, tlsHeaders.protocol),
+        cipherSuite = hAny(req, tlsHeaders.cipher),
+        sessionId = hAny(req, tlsHeaders.sessionId),
+        sessionReused = hAny(req, tlsHeaders.sessionReused).map(_.toLowerCase).collect {
+          case "r" | "1" | "true" | "yes" | "on" => true
+          case "." | "0" | "false" | "no" | "off" => false
+        },
+        serverNames = hAny(req, tlsHeaders.serverName).toList,
+        alpn = hAny(req, tlsHeaders.alpn),
+        curve = hAny(req, tlsHeaders.curve),
+        earlyData = hAny(req, tlsHeaders.earlyData).map(v => v == "1" || v.equalsIgnoreCase("true")),
+        clientCiphers = hAny(req, tlsHeaders.clientCiphers).toList.flatMap(_.split("[:,]")).map(_.trim).filter(_.nonEmpty),
+        clientCurves = hAny(req, tlsHeaders.clientCurves).toList.flatMap(_.split("[:,]")).map(_.trim).filter(_.nonEmpty),
+        ja3 = hAny(req, tlsHeaders.ja3),
+        ja4 = hAny(req, tlsHeaders.ja4),
+        clientCertificateVerify = hAny(req, tlsHeaders.clientVerify),
+        peerPrincipal = certificates.headOption.map(_.subject),
+        peerCertificates = certificates,
+        localPrincipal = None
+      )
+    }.filter(t => t.protocol.isDefined || t.cipherSuite.isDefined || t.serverNames.nonEmpty || t.peerCertificates.nonEmpty || t.ja3.isDefined || t.ja4.isDefined)
+
+    val tls = if (proxied) forwardedTls else connectionTls
 
     // -------- request
     val uri         = req.uri
@@ -618,8 +723,8 @@ class ClientInfoExtractor(reverseDnsLookup: Boolean, reverseDnsTimeoutMs: Long =
             remoteAddress = clientIP.map(_._1.getHostAddress),
             remotePort = clientPort,
             remoteAddressDetails = clientIPDetails,
-            secure = scheme.map(s => s == "https" || s == "wss"),
-            protocol = None,
+            secure = scheme.map(s => s == "https" || s == "wss").map(_ || tls.isDefined).orElse(tls.map(_ => true)),
+            protocol = hAny(req, clientProtocolHeaders),
             viaReverseProxy = true
           ),
       request = requestInfo,
