@@ -15,12 +15,22 @@
  */
 package spy.tools
 
-import org.json4s.ext.{JavaTimeSerializers, JavaTypesSerializers}
-import org.json4s.jackson.Serialization
-import org.json4s.{DefaultFormats, Formats}
+import com.github.plokhotnyuk.jsoniter_scala.core.JsonValueCodec
+import com.github.plokhotnyuk.jsoniter_scala.macros.{CodecMakerConfig, JsonCodecMaker}
+import spy.model.ClientInfo
+import spy.routing.{Health, ServiceInfo}
 
+/** jsoniter-scala codecs used by both tapir endpoints and plain pekko-http routes.
+  *
+  * None values and empty collections are not rendered, default values are always rendered.
+  */
 trait JsonImplicits {
-  implicit val chosenSerialization: Serialization.type = Serialization
-  implicit val chosenFormats: Formats = DefaultFormats.lossless ++ JavaTimeSerializers.all ++ JavaTypesSerializers.all
+  given stringCodec: JsonValueCodec[String]           = JsonCodecMaker.make
+  given healthCodec: JsonValueCodec[Health]           = JsonCodecMaker.make(JsonImplicits.config)
+  given serviceInfoCodec: JsonValueCodec[ServiceInfo] = JsonCodecMaker.make(JsonImplicits.config)
+  given clientInfoCodec: JsonValueCodec[ClientInfo]   = JsonCodecMaker.make(JsonImplicits.config)
+}
 
+object JsonImplicits extends JsonImplicits {
+  inline def config: CodecMakerConfig = CodecMakerConfig.withTransientDefault(false)
 }

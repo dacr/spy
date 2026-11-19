@@ -18,19 +18,16 @@ package spy.routing
 import org.apache.pekko.http.scaladsl.server.Route
 import org.slf4j.LoggerFactory
 import spy.ServiceDependencies
-import spy.tools.DateTimeTools
-import sttp.tapir._
-import sttp.tapir.json.json4s._
+import spy.model.ClientInfo
+import spy.tools.{ClientInfoExtractor, DateTimeTools}
+import sttp.tapir.*
+import sttp.tapir.json.jsoniter.*
+import sttp.tapir.model.ServerRequest
 import sttp.tapir.server.pekkohttp.PekkoHttpServerInterpreter
 import sttp.tapir.swagger.bundle.SwaggerInterpreter
-import sttp.tapir.generic.auto._
+import sttp.tapir.generic.auto.*
 import java.util.UUID
 import scala.concurrent.{ExecutionContext, Future}
-
-case class ClientInfo(
-  clientIP: String,
-  userAgent: String
-)
 
 case class ServiceInfo(
   instanceUUID: String,
@@ -66,14 +63,13 @@ case class SpyRouting(dependencies: ServiceDependencies) extends Routing with Da
     Right(ipStr)
   }
 
-  def getMyClient(userAgent: Option[String], ip: Option[String]): Future[Either[Unit, ClientInfo]] = Future.successful {
-    val clientInfo = ClientInfo(
-      clientIP = ip.getOrElse("unknown"),
-      userAgent = userAgent.getOrElse("unknown")
-    )
-    logger.info(s"ClientInfo returned to client : $clientInfo")
-    Right(clientInfo)
-  }
+  val clientInfoExtractor = ClientInfoExtractor(reverseDnsLookup = dependencies.config.spy.behavior.reverseDnsLookup)
+
+  def getMyClient(request: ServerRequest): Future[Either[Unit, ClientInfo]] =
+    clientInfoExtractor.extract(request).map { clientInfo =>
+      logger.info(s"ClientInfo returned to client : ip=${clientInfo.clientIP.getOrElse("unknown")} userAgent=${clientInfo.userAgent.getOrElse("unknown")}")
+      Right(clientInfo)
+    }
 
   // Endpoints
   val infoEndpoint = endpoint.get
@@ -91,16 +87,19 @@ case class SpyRouting(dependencies: ServiceDependencies) extends Routing with Da
 
   val myclientEndpoint = endpoint.get
     .in("api" / "myclient")
-    .in(header[Option[String]]("User-Agent"))
-    .in(clientIp)
+    .in(extractFromRequest(identity))
     .out(jsonBody[ClientInfo])
     .name("myclient")
-    .description("Get various information about my http client")
+    .description(
+      "Get everything which can be learnt about my http client : network & proxies, user agent, client hints, " +
+        "content negotiation preferences, fetch metadata, privacy signals, tracing, TLS, CDN geo hints and all received headers " +
+        "(sensitive header values are redacted). Absent information is not rendered."
+    )
 
   // Routes
   val infoRoute     = PekkoHttpServerInterpreter().toRoute(infoEndpoint.serverLogic(_ => getServiceInfo))
   val myipRoute     = PekkoHttpServerInterpreter().toRoute(myipEndpoint.serverLogic(ip => getMyIp(ip)))
-  val myclientRoute = PekkoHttpServerInterpreter().toRoute(myclientEndpoint.serverLogic { case (ua, ip) => getMyClient(ua, ip) })
+  val myclientRoute = PekkoHttpServerInterpreter().toRoute(myclientEndpoint.serverLogic(getMyClient))
 
   val endpoints = List(infoEndpoint, myipEndpoint, myclientEndpoint)
 

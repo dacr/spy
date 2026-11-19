@@ -20,6 +20,7 @@ scala-cli --dep fr.janalyse::spy:1.0.7 -e 'spy.Main.main(args)'
 | SPY_PREFIX           | Add a prefix to all defined routes     | ""                      |
 | SPY_URL              | How this service is known from outside | "http://127.0.0.1:8080" |
 | SPY_STORE_PATH       | Where data is stored                   | "/tmp/spy-data"         |
+| SPY_REVERSE_DNS_LOOKUP | Resolve client IPs to host names     | true                    |
 
 [cs]: https://get-coursier.io/
 [scl]: https://scala-cli.virtuslab.org/

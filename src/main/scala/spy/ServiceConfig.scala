@@ -51,7 +51,8 @@ case class FileSystemStorageConfig(
 ) derives ConfigReader
 
 case class Behavior(
-  fileSystemStorage: FileSystemStorageConfig
+  fileSystemStorage: FileSystemStorageConfig,
+  reverseDnsLookup: Boolean
 ) derives ConfigReader
 
 // Automatically populated by the build process from a generated config file

@@ -6,22 +6,22 @@ licenses += "NON-AI-APACHE2" -> url(s"https://github.com/non-ai-licenses/non-ai-
 
 scalaVersion := "3.10.1"
 
-scalacOptions := Seq("-unchecked", "-deprecation", "-encoding", "utf8", "-feature")
+scalacOptions := Seq("-unchecked", "-deprecation", "-encoding", "utf8", "-feature", "-release", "25")
 
 lazy val versions = new {
   // client side dependencies
   val swaggerui = "5.35.0"
   val bootstrap = "5.3.8"
-  val jquery    = "3.8.0"
-  val awesome   = "6.7.2"
+  val jquery    = "4.1.0"
+  val awesome   = "7.3.0"
 
   // server side dependencies
   val pureConfig      = "0.17.11"
-  val pekko           = "1.7.1"
-  val pekkoHttp       = "1.4.2"
-  val pekkoHttpJson4s = "3.12.0"
-  val json4s          = "4.1.1"
-  val logback         = "1.5.38"
+  val pekko             = "1.7.1"
+  val pekkoHttp         = "1.4.2"
+  val pekkoHttpJsoniter = "3.12.0"
+  val jsoniter          = "2.43.0"
+  val logback           = "1.6.7"
   val slf4j           = "2.0.20"
   val scalatest       = "3.2.20"
   val commonsio       = "2.22.0"
@@ -40,8 +40,8 @@ libraryDependencies ++= Seq(
 // server side dependencies
 libraryDependencies ++= Seq(
   "com.github.pureconfig"       %% "pureconfig-core"         % versions.pureConfig,
-  "io.github.json4s"            %% "json4s-jackson"          % versions.json4s,
-  "io.github.json4s"            %% "json4s-ext"              % versions.json4s,
+  "com.github.plokhotnyuk.jsoniter-scala" %% "jsoniter-scala-core"   % versions.jsoniter,
+  "com.github.plokhotnyuk.jsoniter-scala" %% "jsoniter-scala-macros" % versions.jsoniter % "compile-internal",
   "org.apache.pekko"            %% "pekko-actor-typed"       % versions.pekko,
   "org.apache.pekko"            %% "pekko-http"              % versions.pekkoHttp,
   "org.apache.pekko"            %% "pekko-http-caching"      % versions.pekkoHttp,
@@ -50,12 +50,12 @@ libraryDependencies ++= Seq(
   "org.apache.pekko"            %% "pekko-testkit"           % versions.pekko     % Test,
   "org.apache.pekko"            %% "pekko-stream-testkit"    % versions.pekko     % Test,
   "org.apache.pekko"            %% "pekko-http-testkit"      % versions.pekkoHttp % Test,
-  "com.github.pjfanning"        %% "pekko-http-json4s"       % versions.pekkoHttpJson4s,
+  "com.github.pjfanning"        %% "pekko-http-jsoniter-scala" % versions.pekkoHttpJsoniter,
   "org.slf4j"                    % "slf4j-api"               % versions.slf4j,
   "ch.qos.logback"               % "logback-classic"         % versions.logback,
   "commons-io"                   % "commons-io"              % versions.commonsio,
   "com.softwaremill.sttp.tapir" %% "tapir-pekko-http-server" % versions.tapir,
-  "com.softwaremill.sttp.tapir" %% "tapir-json-json4s"       % versions.tapir,
+  "com.softwaremill.sttp.tapir" %% "tapir-jsoniter-scala"    % versions.tapir,
   "com.softwaremill.sttp.tapir" %% "tapir-swagger-ui-bundle" % versions.tapir,
 
   "org.scalatest"         %% "scalatest"            % versions.scalatest % Test,

@@ -17,7 +17,7 @@ package spy.routing
 
 import org.apache.pekko.http.scaladsl.server.Directives._
 import org.apache.pekko.http.scaladsl.server.Route
-import com.github.pjfanning.pekkohttpjson4s.Json4sSupport._
+import com.github.pjfanning.pekkohttpjsoniterscala.JsoniterScalaSupport.*
 import spy.ServiceDependencies
 
 case class Health(alive: Boolean = true, description: String = "alive")

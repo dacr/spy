@@ -18,18 +18,25 @@ package spy
 import org.apache.pekko.http.scaladsl.testkit.ScalatestRouteTest
 import org.scalatest.matchers._
 import org.scalatest.wordspec._
+import org.apache.pekko.http.scaladsl.model.HttpEntity
+import org.apache.pekko.http.scaladsl.model.headers.RawHeader
+import org.apache.pekko.http.scaladsl.testkit.RouteTestTimeout
+import scala.concurrent.duration.DurationInt
+import spy.model.{ClientInfo, PrivacySignals, UserAgentDetails}
 import spy.routing.Health
 import spy.tools.JsonImplicits
 
 
 class ServiceTest extends AnyWordSpec with should.Matchers with ScalatestRouteTest with JsonImplicits {
 
+  implicit val routeTestTimeout: RouteTestTimeout = RouteTestTimeout(10.seconds) // reverse DNS lookups may take time
+
   val routes = ServiceRoutes(ServiceDependencies.defaults).routes
 
   "Web Echo Service" should {
     "Respond OK when pinged" in {
       Get("/health") ~> routes ~> check {
-        import com.github.pjfanning.pekkohttpjson4s.Json4sSupport._
+        import com.github.pjfanning.pekkohttpjsoniterscala.JsoniterScalaSupport.*
         responseAs[Health] shouldBe Health(true, "alive")
       }
     }
@@ -54,14 +61,88 @@ class ServiceTest extends AnyWordSpec with should.Matchers with ScalatestRouteTe
     }
     "Respond to info request" in {
       Get("/api/info") ~> routes ~> check {
-        import com.github.pjfanning.pekkohttpjson4s.Json4sSupport._
+        import com.github.pjfanning.pekkohttpjsoniterscala.JsoniterScalaSupport.*
         responseAs[spy.routing.ServiceInfo].version should not be empty
       }
     }
     "Respond to myip request" in {
       Get("/api/myip") ~> routes ~> check {
-        import com.github.pjfanning.pekkohttpjson4s.Json4sSupport._
+        import com.github.pjfanning.pekkohttpjsoniterscala.JsoniterScalaSupport.*
         responseAs[String] shouldBe "unknown" // Since no headers provided
+      }
+    }
+    "Respond to myclient request without any information" in {
+      Get("/api/myclient") ~> routes ~> check {
+        import com.github.pjfanning.pekkohttpjsoniterscala.JsoniterScalaSupport.*
+        val info = responseAs[ClientInfo]
+        info.clientIP shouldBe None
+        info.userAgent shouldBe None
+        info.request.method shouldBe "GET"
+        info.request.path shouldBe "/api/myclient"
+      }
+    }
+    "Respond to myclient request with an exhaustive set of information" in {
+      val request = Get("/api/myclient?a=1&a=2&b=x").withHeaders(
+        RawHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 Edg/124.0.2478.80"),
+        RawHeader("Forwarded", "for=\"[2001:db8:cafe::17]:4711\";proto=https;host=example.com, for=192.0.2.60"),
+        RawHeader("X-Forwarded-For", "203.0.113.195, 70.41.3.18, 150.172.238.178"),
+        RawHeader("Via", "1.1 proxy-a, 1.1 proxy-b"),
+        RawHeader("Accept-Language", "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7"),
+        RawHeader("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"),
+        RawHeader("Sec-CH-UA", "\"Chromium\";v=\"124\", \"Microsoft Edge\";v=\"124\", \"Not-A.Brand\";v=\"99\""),
+        RawHeader("Sec-CH-UA-Mobile", "?0"),
+        RawHeader("Sec-CH-UA-Platform", "\"Windows\""),
+        RawHeader("Sec-Fetch-Site", "none"),
+        RawHeader("Sec-Fetch-User", "?1"),
+        RawHeader("DNT", "1"),
+        RawHeader("Sec-GPC", "1"),
+        RawHeader("CF-IPCountry", "FR"),
+        RawHeader("CF-IPCity", "Paris"),
+        RawHeader("traceparent", "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"),
+        RawHeader("Authorization", "Bearer super-secret-token"),
+        RawHeader("Cookie", "session=very-secret; theme=dark")
+      )
+      request ~> routes ~> check {
+        import com.github.pjfanning.pekkohttpjsoniterscala.JsoniterScalaSupport.*
+        val raw = response.entity.asInstanceOf[HttpEntity.Strict].data.utf8String
+        raw should not include "super-secret-token"
+        raw should not include "very-secret"
+        val info = responseAs[ClientInfo]
+        info.clientIP shouldBe Some("2001:db8:cafe:0:0:0:0:17")
+        info.clientIPSource shouldBe Some("Forwarded")
+        info.clientIPDetails.map(_.documentation) shouldBe Some(true)
+        info.clientIPDetails.map(_.publiclyRoutable) shouldBe Some(false)
+        info.proxy.behindProxy shouldBe true
+        info.proxy.forwarded.size shouldBe 2
+        info.proxy.xForwardedFor shouldBe List("203.0.113.195", "70.41.3.18", "150.172.238.178")
+        info.proxy.via shouldBe List("1.1 proxy-a", "1.1 proxy-b")
+        info.proxy.hopsCount shouldBe Some(3)
+        info.preferences.preferredLanguage shouldBe Some("fr-FR")
+        info.preferences.mediaTypes.last.value shouldBe "*/*"
+        info.clientHints.brands.map(_.name) should contain("Microsoft Edge")
+        info.clientHints.mobile shouldBe Some(false)
+        info.clientHints.platform shouldBe Some("Windows")
+        info.fetchMetadata.user shouldBe Some(true)
+        info.privacy shouldBe PrivacySignals(Some(true), Some(true))
+        info.geo.map(_.source) shouldBe Some("cloudflare")
+        info.geo.flatMap(_.city) shouldBe Some("Paris")
+        info.tracing.traceparent shouldBe defined
+        info.authorizationScheme shouldBe Some("Bearer")
+        info.cookieNames shouldBe List("session", "theme")
+        info.request.query shouldBe Map("a" -> List("1", "2"), "b" -> List("x"))
+        info.userAgentDetails.flatMap(_.browser) shouldBe Some("Edge")
+        info.userAgentDetails.flatMap(_.os) shouldBe Some("Windows")
+        info.userAgentDetails.flatMap(_.deviceType) shouldBe Some("desktop")
+      }
+    }
+    "Detect command line clients" in {
+      Get("/api/myclient").withHeaders(RawHeader("User-Agent", "curl/8.11.1"), RawHeader("X-Real-IP", "10.1.2.3")) ~> routes ~> check {
+        import com.github.pjfanning.pekkohttpjsoniterscala.JsoniterScalaSupport.*
+        val info = responseAs[ClientInfo]
+        info.userAgentDetails shouldBe Some(UserAgentDetails(Some("curl"), Some("8.11.1"), None, None, None, Some("cli"), false))
+        info.clientIP shouldBe Some("10.1.2.3")
+        info.clientIPSource shouldBe Some("X-Real-IP")
+        info.clientIPDetails.map(_.privateRange) shouldBe Some(true)
       }
     }
   }

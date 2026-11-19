@@ -26,10 +26,11 @@
 
     # ---------------------------------------------------------------------------
     # nix build
-    packages.default = sbt.mkSbtDerivation.${system} {
+    # sbt running on java 25 for both the dependencies fetching phase and the build itself
+    packages.default = (sbt.mkSbtDerivation.${system}.withOverrides { sbt = sbt-jdk; }) {
       pname = "nix-spy";
       version = builtins.elemAt (builtins.match ''[^"]+"(.*)".*'' (builtins.readFile ./version.sbt)) 0;
-      depsSha256 = "sha256-8Fa/HVFME7EoHV9pjL6d5Q2RCzx/j2XnW/CalqSX+qo=";
+      depsSha256 = "sha256-wOlafT3P2Nuaski9aDOQMA9bxTvudnziHoUbSDxotcM=";
 
       src = ./.;
 
