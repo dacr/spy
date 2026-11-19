@@ -88,6 +88,27 @@ class ClientInfoExtractor(reverseDnsLookup: Boolean, reverseDnsTimeoutMs: Long =
     Option(bare).filter(_.nonEmpty).flatMap(b => Try(InetAddress.ofLiteral(b)).toOption) // ofLiteral never triggers DNS
   }
 
+  /** port part of `1.2.3.4:80`, `[2001:db8::1]:443`, `example.com:8080` */
+  def portPart(raw: String): Option[Int] = {
+    val v = unquote(raw).trim
+    val p =
+      if (v.startsWith("[")) Some(v.dropWhile(_ != ']').drop(1)).filter(_.startsWith(":")).map(_.drop(1))
+      else if (v.count(_ == ':') == 1) Some(v.dropWhile(_ != ':').drop(1))
+      else None
+    p.flatMap(_.toIntOption)
+  }
+
+  /** host part of `example.com:8080`, `[2001:db8::1]:443` */
+  def hostPart(raw: String): String = {
+    val v = unquote(raw).trim
+    if (v.startsWith("[")) v.drop(1).takeWhile(_ != ']')
+    else if (v.count(_ == ':') == 1) v.takeWhile(_ != ':')
+    else v
+  }
+
+  private val defaultPorts      = Map("http" -> 80, "ws" -> 80, "https" -> 443, "wss" -> 443)
+  private val cfVisitorSchemeRE = "\"scheme\"\\s*:\\s*\"(\\w+)\"".r
+
   private def inRange(addr: InetAddress, prefix: String, bits: Int): Boolean = {
     val net = InetAddress.ofLiteral(prefix).getAddress
     val a   = addr.getAddress
@@ -262,8 +283,26 @@ class ClientInfoExtractor(reverseDnsLookup: Boolean, reverseDnsTimeoutMs: Long =
     val fromRemote    = remoteAddress.map(_ -> "connection")
     val clientIP      = fromForwarded.orElse(fromHeaders).orElse(fromRemote)
 
+    // forwarding headers are giving the client IP, so the TCP peer is a reverse proxy
+    val proxied = clientIP.exists(_._2 != "connection")
+
+    val clientPort =
+      if (!proxied) remotePort
+      else
+        forwarded.headOption
+          .flatMap(_.forValue)
+          .flatMap(portPart)
+          .orElse(List("X-Real-Port", "X-Client-Port", "X-Forwarded-Client-Port").iterator.flatMap(n => hInt(req, n)).nextOption())
+          .filter(p => p > 0 && p < 65536)
+
     val proxy = ProxyDetails(
-      behindProxy = forwarded.nonEmpty || xff.nonEmpty || via.nonEmpty || clientIP.exists(_._2 != "connection"),
+      peerAddress = None,
+      peerPort = None,
+      peerAddressDetails = None,
+      peerProtocol = None,
+      peerSecure = None,
+      upstreamUrl = None,
+      behindProxy = forwarded.nonEmpty || xff.nonEmpty || via.nonEmpty || proxied,
       hopsCount = Some(List(forwarded.size, xff.size, via.size).max).filter(_ > 0),
       forwarded = forwarded,
       xForwardedFor = xff,
@@ -494,13 +533,40 @@ class ClientInfoExtractor(reverseDnsLookup: Boolean, reverseDnsTimeoutMs: Long =
     val allHeaders  = req.headers.toList.filterNot { hd =>
       syntheticHeaders.contains(hd.name.toLowerCase) || (hd.name.equalsIgnoreCase("Content-Length") && hd.value.trim == "0")
     }
+    val upstreamPath = uri.pathSegments.segments.map(_.v).mkString("/", "/", "")
+    val rawQuery     = pekkoContext.flatMap(_.request.uri.rawQueryString).filter(_.nonEmpty)
+
+    // the request as issued by the client, rebuilt from forwarding headers when behind a reverse proxy
+    val (scheme, host, port, path) =
+      if (!proxied) (uri.scheme, uri.host, uri.port, upstreamPath)
+      else {
+        val scheme  = forwarded.headOption.flatMap(_.proto)
+          .orElse(hList(req, "X-Forwarded-Proto").headOption)
+          .orElse(h(req, "CF-Visitor").flatMap(cfVisitorSchemeRE.findFirstMatchIn).map(_.group(1)))
+          .map(_.toLowerCase)
+          .orElse(uri.scheme)
+        val rawHost = forwarded.headOption.flatMap(_.host).orElse(hList(req, "X-Forwarded-Host").headOption)
+        val host    = rawHost.map(hostPart).orElse(uri.host)
+        val port    = hList(req, "X-Forwarded-Port").headOption.flatMap(_.toIntOption)
+          .orElse(rawHost.flatMap(portPart))
+          .orElse(scheme.flatMap(defaultPorts.get))
+          .orElse(uri.port)
+        val prefix  = h(req, "X-Forwarded-Prefix").map(_.trim.stripSuffix("/")).filter(_.nonEmpty).map(p => if (p.startsWith("/")) p else s"/$p")
+        (scheme, host, port, prefix.getOrElse("") + upstreamPath)
+      }
+    val url = {
+      val authority = host.map(h => if (h.contains(':')) s"[$h]" else h).getOrElse("")
+      val portStr   = port.filterNot(p => scheme.flatMap(defaultPorts.get).contains(p)).map(p => s":$p").getOrElse("")
+      s"${scheme.getOrElse("http")}://$authority$portStr$path${rawQuery.map(q => s"?$q").getOrElse("")}"
+    }
+
     val requestInfo = RequestDetails(
       method = req.method.method,
-      url = uri.toString,
-      scheme = uri.scheme,
-      host = uri.host,
-      port = uri.port,
-      path = uri.pathSegments.segments.map(_.v).mkString("/", "/", ""),
+      url = url,
+      scheme = scheme,
+      host = host,
+      port = port,
+      path = path,
       query = req.queryParameters.toMultiMap.map { case (k, v) => k -> v.toList },
       contentType = h(req, "Content-Type"),
       contentLength = h(req, "Content-Length").flatMap(_.toLongOption).filter(_ > 0),
@@ -537,15 +603,37 @@ class ClientInfoExtractor(reverseDnsLookup: Boolean, reverseDnsTimeoutMs: Long =
       clientIPDetails = clientIPDetails,
       userAgent = userAgent,
       userAgentDetails = userAgent.map(UserAgentParser.parse),
-      connection = ConnectionDetails(
-        remoteAddress = remoteAddress.map(_.getHostAddress),
-        remotePort = remotePort,
-        remoteAddressDetails = remoteDetails,
-        secure = req.connectionInfo.secure,
-        protocol = Option(req.protocol).filter(_.nonEmpty)
-      ),
+      connection =
+        if (!proxied)
+          ConnectionDetails(
+            remoteAddress = remoteAddress.map(_.getHostAddress),
+            remotePort = remotePort,
+            remoteAddressDetails = remoteDetails,
+            secure = req.connectionInfo.secure,
+            protocol = Option(req.protocol).filter(_.nonEmpty),
+            viaReverseProxy = false
+          )
+        else
+          ConnectionDetails(
+            remoteAddress = clientIP.map(_._1.getHostAddress),
+            remotePort = clientPort,
+            remoteAddressDetails = clientIPDetails,
+            secure = scheme.map(s => s == "https" || s == "wss"),
+            protocol = None,
+            viaReverseProxy = true
+          ),
       request = requestInfo,
-      proxy = proxy,
+      proxy =
+        if (!proxied) proxy
+        else
+          proxy.copy(
+            peerAddress = remoteAddress.map(_.getHostAddress),
+            peerPort = remotePort,
+            peerAddressDetails = remoteDetails,
+            peerProtocol = Option(req.protocol).filter(_.nonEmpty),
+            peerSecure = req.connectionInfo.secure,
+            upstreamUrl = Some(uri.toString)
+          ),
       geo = geo,
       preferences = preferences,
       clientHints = clientHints,

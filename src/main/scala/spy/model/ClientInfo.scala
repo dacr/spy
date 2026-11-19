@@ -57,12 +57,16 @@ case class IpDetails(
   reverseDns: Option[String]
 )
 
+/** The client connection as seen by the client : when spy is behind a reverse proxy, data comes from forwarding
+  * headers, the raw TCP peer (the proxy) being then described in ProxyDetails.
+  */
 case class ConnectionDetails(
   remoteAddress: Option[String],
   remotePort: Option[Int],
   remoteAddressDetails: Option[IpDetails],
   secure: Option[Boolean],
-  protocol: Option[String]
+  protocol: Option[String], // unknown when behind a reverse proxy
+  viaReverseProxy: Boolean
 )
 
 case class RequestDetails(
@@ -89,6 +93,12 @@ case class ForwardedElement(
 case class ProxyDetails(
   behindProxy: Boolean,
   hopsCount: Option[Int],
+  peerAddress: Option[String],              // TCP peer of spy, the last proxy when behind a reverse proxy
+  peerPort: Option[Int],
+  peerAddressDetails: Option[IpDetails],
+  peerProtocol: Option[String],             // HTTP version between the last proxy and spy
+  peerSecure: Option[Boolean],
+  upstreamUrl: Option[String],              // URL as received by spy from the last proxy
   forwarded: List[ForwardedElement],
   xForwardedFor: List[String],
   xForwardedProto: Option[String],

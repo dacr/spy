@@ -18,7 +18,8 @@ package spy
 import org.apache.pekko.http.scaladsl.testkit.ScalatestRouteTest
 import org.scalatest.matchers._
 import org.scalatest.wordspec._
-import org.apache.pekko.http.scaladsl.model.HttpEntity
+import org.apache.pekko.http.scaladsl.model.{AttributeKeys, HttpEntity, RemoteAddress}
+import java.net.InetAddress
 import org.apache.pekko.http.scaladsl.model.headers.RawHeader
 import org.apache.pekko.http.scaladsl.testkit.RouteTestTimeout
 import scala.concurrent.duration.DurationInt
@@ -133,6 +134,66 @@ class ServiceTest extends AnyWordSpec with should.Matchers with ScalatestRouteTe
         info.userAgentDetails.flatMap(_.browser) shouldBe Some("Edge")
         info.userAgentDetails.flatMap(_.os) shouldBe Some("Windows")
         info.userAgentDetails.flatMap(_.deviceType) shouldBe Some("desktop")
+      }
+    }
+    "Describe the client connection and request as seen by the client when behind a reverse proxy" in {
+      val clientIP = "2a01:cb08:84cd:200:6d5f:2f36:d9c8:2b0b"
+      val request  = Get("http://spy.code-examples.org/api/myclient?x=1")
+        .withHeaders(
+          RawHeader("X-Real-Ip", clientIP),
+          RawHeader("X-Forwarded-For", clientIP),
+          RawHeader("X-Forwarded-Proto", "https"),
+          RawHeader("X-Forwarded-Host", "spy.code-examples.org"),
+          RawHeader("X-Forwarded-Server", "thorgal")
+        )
+        .addAttribute(AttributeKeys.remoteAddress, RemoteAddress(InetAddress.getLoopbackAddress, Some(60036)))
+      request ~> routes ~> check {
+        import com.github.pjfanning.pekkohttpjsoniterscala.JsoniterScalaSupport.*
+        val info = responseAs[ClientInfo]
+        info.connection.viaReverseProxy shouldBe true
+        info.connection.remoteAddress shouldBe Some("2a01:cb08:84cd:200:6d5f:2f36:d9c8:2b0b")
+        info.connection.remoteAddressDetails.map(_.publiclyRoutable) shouldBe Some(true)
+        info.connection.remotePort shouldBe None // not provided by this proxy
+        info.connection.secure shouldBe Some(true)
+        info.connection.protocol shouldBe None
+        info.request.url shouldBe "https://spy.code-examples.org/api/myclient?x=1"
+        info.request.scheme shouldBe Some("https")
+        info.request.port shouldBe Some(443)
+        info.proxy.peerAddress shouldBe Some("127.0.0.1")
+        info.proxy.peerPort shouldBe Some(60036)
+        info.proxy.peerAddressDetails.map(_.loopback) shouldBe Some(true)
+        info.proxy.peerProtocol shouldBe Some("HTTP/1.1")
+        info.proxy.peerSecure shouldBe Some(false)
+        info.proxy.upstreamUrl shouldBe Some("http://spy.code-examples.org:80/api/myclient?x=1")
+      }
+    }
+    "Use RFC 7239 Forwarded client port, host and the forwarded prefix" in {
+      val request = Get("http://10.0.0.5:8080/api/myclient")
+        .withHeaders(
+          RawHeader("Forwarded", "for=\"[2001:db8::42]:51234\";proto=https;host=\"example.com:8443\""),
+          RawHeader("X-Forwarded-Prefix", "/spy")
+        )
+        .addAttribute(AttributeKeys.remoteAddress, RemoteAddress(InetAddress.getByName("10.0.0.1"), Some(40000)))
+      request ~> routes ~> check {
+        import com.github.pjfanning.pekkohttpjsoniterscala.JsoniterScalaSupport.*
+        val info = responseAs[ClientInfo]
+        info.connection.remoteAddress shouldBe Some("2001:db8:0:0:0:0:0:42")
+        info.connection.remotePort shouldBe Some(51234)
+        info.request.url shouldBe "https://example.com:8443/spy/api/myclient"
+        info.request.path shouldBe "/spy/api/myclient"
+        info.proxy.peerAddress shouldBe Some("10.0.0.1")
+      }
+    }
+    "Keep the TCP peer as the client connection when not behind a proxy" in {
+      Get("/api/myclient").addAttribute(AttributeKeys.remoteAddress, RemoteAddress(InetAddress.getByName("192.168.1.20"), Some(50000))) ~> routes ~> check {
+        import com.github.pjfanning.pekkohttpjsoniterscala.JsoniterScalaSupport.*
+        val info = responseAs[ClientInfo]
+        info.connection.viaReverseProxy shouldBe false
+        info.connection.remoteAddress shouldBe Some("192.168.1.20")
+        info.connection.remotePort shouldBe Some(50000)
+        info.connection.protocol shouldBe Some("HTTP/1.1")
+        info.proxy.behindProxy shouldBe false
+        info.proxy.peerAddress shouldBe None
       }
     }
     "Detect command line clients" in {
