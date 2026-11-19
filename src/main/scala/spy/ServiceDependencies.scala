@@ -15,13 +15,12 @@
  */
 package spy
 
-
 trait ServiceDependencies {
-  val config:ServiceConfig
+  val config: ServiceConfig
 }
 
 object ServiceDependencies {
-  def defaults:ServiceDependencies = {
+  def defaults: ServiceDependencies = {
     val chosenConfig = ServiceConfig()
     new ServiceDependencies {
       override val config: ServiceConfig = chosenConfig

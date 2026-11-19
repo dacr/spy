@@ -95,7 +95,7 @@ class ClientInfoExtractor(
 
   /** structured-field boolean (?1 / ?0) or plain 1/0/true/false */
   private def hBool(req: ServerRequest, name: String): Option[Boolean] = h(req, name).map(_.trim.toLowerCase).collect {
-    case "?1" | "1" | "true" | "yes" | "on" => true
+    case "?1" | "1" | "true" | "yes" | "on"  => true
     case "?0" | "0" | "false" | "no" | "off" => false
   }
 
@@ -124,26 +124,26 @@ class ClientInfoExtractor(
 
   /** TLS details forwarded by a reverse proxy, first name is the documented one, others are common aliases */
   object tlsHeaders {
-    val protocol          = List("X-SSL-Protocol", "X-Client-TLS-Protocol", "X-Forwarded-TLS-Protocol", "X-TLS-Protocol")      // $ssl_protocol
-    val cipher            = List("X-SSL-Cipher", "X-Client-TLS-Cipher", "X-Forwarded-TLS-Cipher", "X-TLS-Cipher")            // $ssl_cipher
-    val sessionId         = List("X-SSL-Session-Id")                                                   // $ssl_session_id
-    val sessionReused     = List("X-SSL-Session-Reused")                                               // $ssl_session_reused
+    val protocol          = List("X-SSL-Protocol", "X-Client-TLS-Protocol", "X-Forwarded-TLS-Protocol", "X-TLS-Protocol") // $ssl_protocol
+    val cipher            = List("X-SSL-Cipher", "X-Client-TLS-Cipher", "X-Forwarded-TLS-Cipher", "X-TLS-Cipher")         // $ssl_cipher
+    val sessionId         = List("X-SSL-Session-Id")                                                                      // $ssl_session_id
+    val sessionReused     = List("X-SSL-Session-Reused")                                                                  // $ssl_session_reused
     val serverName        = List("X-SSL-Server-Name", "X-Client-TLS-SNI", "X-TLS-SNI", "X-Forwarded-TLS-SNI")             // $ssl_server_name
-    val alpn              = List("X-SSL-ALPN", "X-TLS-ALPN")                                           // $ssl_alpn_protocol
-    val curve             = List("X-SSL-Curve")                                                        // $ssl_curve
-    val earlyData         = List("X-SSL-Early-Data", "Early-Data")                                     // $ssl_early_data
-    val clientCiphers     = List("X-SSL-Client-Ciphers")                                               // $ssl_ciphers
-    val clientCurves      = List("X-SSL-Client-Curves")                                                // $ssl_curves
+    val alpn              = List("X-SSL-ALPN", "X-TLS-ALPN")                                                              // $ssl_alpn_protocol
+    val curve             = List("X-SSL-Curve")                                                                           // $ssl_curve
+    val earlyData         = List("X-SSL-Early-Data", "Early-Data")                                                        // $ssl_early_data
+    val clientCiphers     = List("X-SSL-Client-Ciphers")                                                                  // $ssl_ciphers
+    val clientCurves      = List("X-SSL-Client-Curves")                                                                   // $ssl_curves
     val ja3               = List("X-JA3-Fingerprint", "X-JA3", "CF-JA3-Hash")
     val ja4               = List("X-JA4-Fingerprint", "X-JA4", "CF-JA4")
-    val clientVerify      = List("X-SSL-Client-Verify")                                                // $ssl_client_verify
-    val clientSubject     = List("X-SSL-Client-S-DN", "X-SSL-Client-DN")                               // $ssl_client_s_dn
-    val clientIssuer      = List("X-SSL-Client-I-DN")                                                  // $ssl_client_i_dn
-    val clientSerial      = List("X-SSL-Client-Serial")                                                // $ssl_client_serial
-    val clientNotBefore   = List("X-SSL-Client-V-Start", "X-SSL-Client-NotBefore")                     // $ssl_client_v_start
-    val clientNotAfter    = List("X-SSL-Client-V-End", "X-SSL-Client-NotAfter")                        // $ssl_client_v_end
-    val clientFingerprint = List("X-SSL-Client-Fingerprint")                                           // $ssl_client_fingerprint
-    val clientCert        = List("X-SSL-Client-Cert", "X-Forwarded-TLS-Client-Cert", "X-Client-Cert")  // $ssl_client_escaped_cert
+    val clientVerify      = List("X-SSL-Client-Verify")                                                                   // $ssl_client_verify
+    val clientSubject     = List("X-SSL-Client-S-DN", "X-SSL-Client-DN")                                                  // $ssl_client_s_dn
+    val clientIssuer      = List("X-SSL-Client-I-DN")                                                                     // $ssl_client_i_dn
+    val clientSerial      = List("X-SSL-Client-Serial")                                                                   // $ssl_client_serial
+    val clientNotBefore   = List("X-SSL-Client-V-Start", "X-SSL-Client-NotBefore")                                        // $ssl_client_v_start
+    val clientNotAfter    = List("X-SSL-Client-V-End", "X-SSL-Client-NotAfter")                                           // $ssl_client_v_end
+    val clientFingerprint = List("X-SSL-Client-Fingerprint")                                                              // $ssl_client_fingerprint
+    val clientCert        = List("X-SSL-Client-Cert", "X-Forwarded-TLS-Client-Cert", "X-Client-Cert")                     // $ssl_client_escaped_cert
   }
 
   def certificateInfo(c: X509Certificate): CertificateInfo =
@@ -158,8 +158,8 @@ class ClientInfoExtractor(
       fingerprintSha1 = Try(HexFormat.of().formatHex(MessageDigest.getInstance("SHA-1").digest(c.getEncoded))).toOption
     )
 
-  /** client certificate forwarded by a proxy : url-escaped PEM (nginx $ssl_client_escaped_cert), raw PEM with
-    * tab separated lines (nginx $ssl_client_cert) or bare base64 DER (traefik, RFC 9440 `:base64:` form)
+  /** client certificate forwarded by a proxy : url-escaped PEM (nginx $ssl_client_escaped_cert), raw PEM with tab separated lines (nginx $ssl_client_cert) or bare base64 DER (traefik, RFC 9440
+    * `:base64:` form)
     */
   def parseForwardedCertificate(raw: String): Option[CertificateInfo] = Try {
     val decoded = if (raw.contains("%")) URLDecoder.decode(raw.replace("+", "%2B"), StandardCharsets.UTF_8) else raw // '+' is a base64 char
@@ -231,17 +231,17 @@ class ClientInfoExtractor(
     }
 
   def ipDetails(addr: InetAddress)(using ExecutionContext): Future[IpDetails] = {
-    val mapped    = ipv4Mapped(addr)
-    val effective = mapped.getOrElse(addr)
-    val isV4      = effective.isInstanceOf[Inet4Address]
-    val loopback  = effective.isLoopbackAddress
-    val priv      = isV4 && (inRange(effective, "10.0.0.0", 8) || inRange(effective, "172.16.0.0", 12) || inRange(effective, "192.168.0.0", 16))
-    val linkLocal = effective.isLinkLocalAddress
-    val ula       = !isV4 && inRange(effective, "fc00::", 7)
-    val cgnat     = isV4 && inRange(effective, "100.64.0.0", 10)
-    val multicast = effective.isMulticastAddress
-    val unspec    = effective.isAnyLocalAddress
-    val doc       =
+    val mapped      = ipv4Mapped(addr)
+    val effective   = mapped.getOrElse(addr)
+    val isV4        = effective.isInstanceOf[Inet4Address]
+    val loopback    = effective.isLoopbackAddress
+    val priv        = isV4 && (inRange(effective, "10.0.0.0", 8) || inRange(effective, "172.16.0.0", 12) || inRange(effective, "192.168.0.0", 16))
+    val linkLocal   = effective.isLinkLocalAddress
+    val ula         = !isV4 && inRange(effective, "fc00::", 7)
+    val cgnat       = isV4 && inRange(effective, "100.64.0.0", 10)
+    val multicast   = effective.isMulticastAddress
+    val unspec      = effective.isAnyLocalAddress
+    val doc         =
       if (isV4) inRange(effective, "192.0.2.0", 24) || inRange(effective, "198.51.100.0", 24) || inRange(effective, "203.0.113.0", 24)
       else inRange(effective, "2001:db8::", 32) || inRange(effective, "3fff::", 20)
     val siteLocalV6 = !isV4 && effective.isSiteLocalAddress
@@ -375,17 +375,21 @@ class ClientInfoExtractor(
     }
     val clientForwarded          = clientIndex.filter(_ => forwarded.nonEmpty).map(forwarded)
     val fromChain                = clientIndex.flatMap(i => normalizeIP(chain(i))).map(_ -> chainSource)
-    val fromHeaders              = Option.when(peerTrusted) {
-      singleClientIPHeaders.iterator.flatMap { name =>
-        hList(req, name).headOption.flatMap(normalizeIP).map(_ -> name)
-      }.nextOption()
-    }.flatten
+    val fromHeaders              = Option
+      .when(peerTrusted) {
+        singleClientIPHeaders.iterator
+          .flatMap { name =>
+            hList(req, name).headOption.flatMap(normalizeIP).map(_ -> name)
+          }
+          .nextOption()
+      }
+      .flatten
     val fromRemote               = remoteAddress.map(_ -> "connection")
     val clientIP                 = fromChain.orElse(fromHeaders).orElse(fromRemote)
     val clientSideChain          = clientIndex match {
-      case Some(i)            => chain.take(i)
+      case Some(i)             => chain.take(i)
       case None if peerTrusted => Nil
-      case None               => chain // not from a trusted proxy, nothing in it can be verified
+      case None                => chain // not from a trusted proxy, nothing in it can be verified
     }
     val trustedChain             = clientIndex.map(i => chain.drop(i + 1)).getOrElse(Nil)
 
@@ -442,7 +446,7 @@ class ClientInfoExtractor(
         case Some(Array(lat, lon)) => (lat, lon)
         case _                     => (None, None)
       }
-      val cloudflare = Option.when(h(req, "CF-IPCountry").isDefined || h(req, "CF-IPCity").isDefined)(
+      val cloudflare                                                   = Option.when(h(req, "CF-IPCountry").isDefined || h(req, "CF-IPCity").isDefined)(
         GeoHints(
           source = "cloudflare",
           country = hString(req, "CF-IPCountry"),
@@ -457,7 +461,7 @@ class ClientInfoExtractor(
           asn = None
         )
       )
-      val cloudfront = Option.when(h(req, "CloudFront-Viewer-Country").isDefined)(
+      val cloudfront                                                   = Option.when(h(req, "CloudFront-Viewer-Country").isDefined)(
         GeoHints(
           source = "cloudfront",
           country = hString(req, "CloudFront-Viewer-Country"),
@@ -472,7 +476,7 @@ class ClientInfoExtractor(
           asn = hString(req, "CloudFront-Viewer-ASN")
         )
       )
-      val vercel     = Option.when(h(req, "X-Vercel-IP-Country").isDefined)(
+      val vercel                                                       = Option.when(h(req, "X-Vercel-IP-Country").isDefined)(
         GeoHints(
           source = "vercel",
           country = hString(req, "X-Vercel-IP-Country"),
@@ -487,7 +491,7 @@ class ClientInfoExtractor(
           asn = None
         )
       )
-      val appengine  = Option.when(h(req, "X-AppEngine-Country").isDefined)({
+      val appengine                                                    = Option.when(h(req, "X-AppEngine-Country").isDefined)({
         val (lat, lon) = latLong(h(req, "X-AppEngine-CityLatLong"))
         GeoHints(
           source = "appengine",
@@ -503,7 +507,7 @@ class ClientInfoExtractor(
           asn = None
         )
       })
-      val gclb       = Option.when(h(req, "X-Client-Geo-Location").isDefined || h(req, "X-Client-Region").isDefined)({
+      val gclb                                                         = Option.when(h(req, "X-Client-Geo-Location").isDefined || h(req, "X-Client-Region").isDefined)({
         val (lat, lon) = latLong(h(req, "X-Client-Geo-Location"))
         GeoHints(
           source = "google-load-balancer",
@@ -639,50 +643,52 @@ class ClientInfoExtractor(
         )
       }
 
-    val forwardedTls = Option.when(proxied) {
-      val forwardedCert = hAny(req, tlsHeaders.clientCert).flatMap(parseForwardedCertificate)
-      val headerCert    = hAny(req, tlsHeaders.clientSubject).map { subject =>
-        CertificateInfo(
-          subject = subject,
-          issuer = hAny(req, tlsHeaders.clientIssuer),
-          serialNumber = hAny(req, tlsHeaders.clientSerial),
-          notBefore = hAny(req, tlsHeaders.clientNotBefore),
-          notAfter = hAny(req, tlsHeaders.clientNotAfter),
-          signatureAlgorithm = None,
-          publicKeyAlgorithm = None,
-          fingerprintSha1 = hAny(req, tlsHeaders.clientFingerprint)
+    val forwardedTls = Option
+      .when(proxied) {
+        val forwardedCert = hAny(req, tlsHeaders.clientCert).flatMap(parseForwardedCertificate)
+        val headerCert    = hAny(req, tlsHeaders.clientSubject).map { subject =>
+          CertificateInfo(
+            subject = subject,
+            issuer = hAny(req, tlsHeaders.clientIssuer),
+            serialNumber = hAny(req, tlsHeaders.clientSerial),
+            notBefore = hAny(req, tlsHeaders.clientNotBefore),
+            notAfter = hAny(req, tlsHeaders.clientNotAfter),
+            signatureAlgorithm = None,
+            publicKeyAlgorithm = None,
+            fingerprintSha1 = hAny(req, tlsHeaders.clientFingerprint)
+          )
+        }
+        val certificates  = forwardedCert.orElse(headerCert).toList
+        TlsDetails(
+          source = "reverse-proxy",
+          protocol = hAny(req, tlsHeaders.protocol),
+          cipherSuite = hAny(req, tlsHeaders.cipher),
+          sessionId = hAny(req, tlsHeaders.sessionId),
+          sessionReused = hAny(req, tlsHeaders.sessionReused).map(_.toLowerCase).collect {
+            case "r" | "1" | "true" | "yes" | "on"  => true
+            case "." | "0" | "false" | "no" | "off" => false
+          },
+          serverNames = hAny(req, tlsHeaders.serverName).toList,
+          alpn = hAny(req, tlsHeaders.alpn),
+          curve = hAny(req, tlsHeaders.curve),
+          earlyData = hAny(req, tlsHeaders.earlyData).map(v => v == "1" || v.equalsIgnoreCase("true")),
+          clientCiphers = hAny(req, tlsHeaders.clientCiphers).toList.flatMap(_.split("[:,]")).map(_.trim).filter(_.nonEmpty),
+          clientCurves = hAny(req, tlsHeaders.clientCurves).toList.flatMap(_.split("[:,]")).map(_.trim).filter(_.nonEmpty),
+          ja3 = hAny(req, tlsHeaders.ja3),
+          ja4 = hAny(req, tlsHeaders.ja4),
+          clientCertificateVerify = hAny(req, tlsHeaders.clientVerify),
+          peerPrincipal = certificates.headOption.map(_.subject),
+          peerCertificates = certificates,
+          localPrincipal = None
         )
       }
-      val certificates  = forwardedCert.orElse(headerCert).toList
-      TlsDetails(
-        source = "reverse-proxy",
-        protocol = hAny(req, tlsHeaders.protocol),
-        cipherSuite = hAny(req, tlsHeaders.cipher),
-        sessionId = hAny(req, tlsHeaders.sessionId),
-        sessionReused = hAny(req, tlsHeaders.sessionReused).map(_.toLowerCase).collect {
-          case "r" | "1" | "true" | "yes" | "on" => true
-          case "." | "0" | "false" | "no" | "off" => false
-        },
-        serverNames = hAny(req, tlsHeaders.serverName).toList,
-        alpn = hAny(req, tlsHeaders.alpn),
-        curve = hAny(req, tlsHeaders.curve),
-        earlyData = hAny(req, tlsHeaders.earlyData).map(v => v == "1" || v.equalsIgnoreCase("true")),
-        clientCiphers = hAny(req, tlsHeaders.clientCiphers).toList.flatMap(_.split("[:,]")).map(_.trim).filter(_.nonEmpty),
-        clientCurves = hAny(req, tlsHeaders.clientCurves).toList.flatMap(_.split("[:,]")).map(_.trim).filter(_.nonEmpty),
-        ja3 = hAny(req, tlsHeaders.ja3),
-        ja4 = hAny(req, tlsHeaders.ja4),
-        clientCertificateVerify = hAny(req, tlsHeaders.clientVerify),
-        peerPrincipal = certificates.headOption.map(_.subject),
-        peerCertificates = certificates,
-        localPrincipal = None
-      )
-    }.filter(t => t.protocol.isDefined || t.cipherSuite.isDefined || t.serverNames.nonEmpty || t.peerCertificates.nonEmpty || t.ja3.isDefined || t.ja4.isDefined)
+      .filter(t => t.protocol.isDefined || t.cipherSuite.isDefined || t.serverNames.nonEmpty || t.peerCertificates.nonEmpty || t.ja3.isDefined || t.ja4.isDefined)
 
     val tls = if (proxied) forwardedTls else connectionTls
 
     // -------- request
-    val uri         = req.uri
-    val allHeaders  = req.headers.toList.filterNot { hd =>
+    val uri          = req.uri
+    val allHeaders   = req.headers.toList.filterNot { hd =>
       syntheticHeaders.contains(hd.name.toLowerCase) || (hd.name.equalsIgnoreCase("Content-Length") && hd.value.trim == "0")
     }
     val upstreamPath = uri.pathSegments.segments.map(_.v).mkString("/", "/", "")
@@ -692,21 +698,23 @@ class ClientInfoExtractor(
     val (scheme, host, port, path) =
       if (!proxied) (uri.scheme, uri.host, uri.port, upstreamPath)
       else {
-        val scheme  = clientForwarded.flatMap(_.proto)
+        val scheme  = clientForwarded
+          .flatMap(_.proto)
           .orElse(hList(req, "X-Forwarded-Proto").headOption)
           .orElse(h(req, "CF-Visitor").flatMap(cfVisitorSchemeRE.findFirstMatchIn).map(_.group(1)))
           .map(_.toLowerCase)
           .orElse(uri.scheme)
         val rawHost = clientForwarded.flatMap(_.host).orElse(hList(req, "X-Forwarded-Host").headOption)
         val host    = rawHost.map(hostPart).orElse(uri.host)
-        val port    = hList(req, "X-Forwarded-Port").headOption.flatMap(_.toIntOption)
+        val port    = hList(req, "X-Forwarded-Port").headOption
+          .flatMap(_.toIntOption)
           .orElse(rawHost.flatMap(portPart))
           .orElse(scheme.flatMap(defaultPorts.get))
           .orElse(uri.port)
         val prefix  = h(req, "X-Forwarded-Prefix").map(_.trim.stripSuffix("/")).filter(_.nonEmpty).map(p => if (p.startsWith("/")) p else s"/$p")
         (scheme, host, port, prefix.getOrElse("") + upstreamPath)
       }
-    val url = {
+    val url                        = {
       val authority = host.map(h => if (h.contains(':')) s"[$h]" else h).getOrElse("")
       val portStr   = port.filterNot(p => scheme.flatMap(defaultPorts.get).contains(p)).map(p => s":$p").getOrElse("")
       s"${scheme.getOrElse("http")}://$authority$portStr$path${rawQuery.map(q => s"?$q").getOrElse("")}"

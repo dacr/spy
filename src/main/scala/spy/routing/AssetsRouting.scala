@@ -15,21 +15,19 @@
  */
 package spy.routing
 
-
 import org.apache.pekko.http.scaladsl.server.Directives._
 import org.apache.pekko.http.scaladsl.server.Route
 import org.apache.pekko.http.scaladsl.server.directives.ContentTypeResolver.Default
 import org.webjars.WebJarAssetLocator
 import spy.ServiceDependencies
 
-
-case class AssetsRouting(dependencies:ServiceDependencies) extends Routing {
+case class AssetsRouting(dependencies: ServiceDependencies) extends Routing {
 
   private val assetLocator = new WebJarAssetLocator()
 
-  private def staticRoutes:Route = {
+  private def staticRoutes: Route = {
     val staticResourcesSubDirectories = List("js", "css", "images", "fonts", "pdf", "txt")
-    val routes = for {resourceDirectory <- staticResourcesSubDirectories} yield {
+    val routes                        = for { resourceDirectory <- staticResourcesSubDirectories } yield {
       path(resourceDirectory / RemainingPath) { resource =>
         respondWithHeaders(clientCacheHeaders) {
           getFromResource(s"spy/static-content/$resourceDirectory/${resource.toString()}")
@@ -39,9 +37,9 @@ case class AssetsRouting(dependencies:ServiceDependencies) extends Routing {
     routes.reduce(_ ~ _)
   }
 
-  private def assetsRoutes:Route =
-    rejectEmptyResponse  {
-      path("assets" / Segment / RemainingPath ) { (webjar, path) =>
+  private def assetsRoutes: Route =
+    rejectEmptyResponse {
+      path("assets" / Segment / RemainingPath) { (webjar, path) =>
         respondWithHeaders(clientCacheHeaders) {
           val resourcePath = assetLocator.getFullPath(webjar, path.toString())
           getFromResource(resourcePath)
@@ -49,5 +47,5 @@ case class AssetsRouting(dependencies:ServiceDependencies) extends Routing {
       }
     }
 
-  override def routes:Route = assetsRoutes ~ staticRoutes
+  override def routes: Route = assetsRoutes ~ staticRoutes
 }

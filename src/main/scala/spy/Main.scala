@@ -24,8 +24,8 @@ object Main {
   def start(): Service = {
     val logger: Logger = org.slf4j.LoggerFactory.getLogger("SpyMain")
     logger.info(s"spy application is starting")
-    val dependencies = ServiceDependencies.defaults
-    val serviceRoutes = ServiceRoutes(dependencies)
+    val dependencies   = ServiceDependencies.defaults
+    val serviceRoutes  = ServiceRoutes(dependencies)
     Service(dependencies, serviceRoutes)
   }
 

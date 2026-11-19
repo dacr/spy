@@ -20,10 +20,9 @@ import org.apache.pekko.http.scaladsl.server.Directives._
 import org.apache.pekko.http.scaladsl.server.Route
 import spy.routing.{AdminRouting, AssetsRouting, HomeRouting, SpyRouting}
 
-/**
- * Prepare (reduce & prefix) service routes
- * @param dependencies
- */
+/** Prepare (reduce & prefix) service routes
+  * @param dependencies
+  */
 case class ServiceRoutes(dependencies: ServiceDependencies) {
   val config = dependencies.config.spy
 
@@ -35,12 +34,11 @@ case class ServiceRoutes(dependencies: ServiceDependencies) {
   ).map(_.routes).reduce(_ ~ _)
 
   val routes: Route =
-    config
-      .site
-      .cleanedPrefix
+    config.site.cleanedPrefix
       .map { p =>
         pathPrefix(p) {
           rawRoutes
         }
-      }.getOrElse(rawRoutes)
+      }
+      .getOrElse(rawRoutes)
 }

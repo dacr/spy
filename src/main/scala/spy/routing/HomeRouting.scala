@@ -17,10 +17,10 @@ case class HomeContext(
 case class HomeRouting(dependencies: ServiceDependencies) extends Routing {
   override def routes: Route = home
 
-  val site = dependencies.config.spy.site
-  val pageContext = PageContext(dependencies.config.spy)
-  val homeContext = HomeContext(context = pageContext)
-  val homeContent = HomeTemplate.render(homeContext).toString()
+  val site            = dependencies.config.spy.site
+  val pageContext     = PageContext(dependencies.config.spy)
+  val homeContext     = HomeContext(context = pageContext)
+  val homeContent     = HomeTemplate.render(homeContext).toString()
   val homeContentType = `text/html` withCharset `UTF-8`
 
   implicit val ec: ExecutionContextExecutor = scala.concurrent.ExecutionContext.global

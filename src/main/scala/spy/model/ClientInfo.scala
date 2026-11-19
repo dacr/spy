@@ -17,26 +17,26 @@ package spy.model
 
 /** Everything which can be learnt about a client from a single HTTP request. */
 case class ClientInfo(
-  clientIP: Option[String],             // best guess of the real client IP (proxy aware)
-  clientIPSource: Option[String],       // where clientIP comes from (header name or "connection")
+  clientIP: Option[String],            // best guess of the real client IP (proxy aware)
+  clientIPSource: Option[String],      // where clientIP comes from (header name or "connection")
   clientIPDetails: Option[IpDetails],
   userAgent: Option[String],
   userAgentDetails: Option[UserAgentDetails],
   connection: ConnectionDetails,
   request: RequestDetails,
   proxy: ProxyDetails,
-  geo: Option[GeoHints],                // only when a CDN / cloud front-end provides it
+  geo: Option[GeoHints],               // only when a CDN / cloud front-end provides it
   preferences: ClientPreferences,
   clientHints: ClientHints,
   fetchMetadata: FetchMetadata,
   navigation: NavigationDetails,
   privacy: PrivacySignals,
   tracing: TracingDetails,
-  tls: Option[TlsDetails],              // terminated by spy itself, or forwarded by a trusted reverse proxy
-  authorizationScheme: Option[String],  // never the credentials themselves
+  tls: Option[TlsDetails],             // terminated by spy itself, or forwarded by a trusted reverse proxy
+  authorizationScheme: Option[String], // never the credentials themselves
   proxyAuthorizationScheme: Option[String],
-  cookieNames: List[String],            // never the cookie values
-  headers: List[HeaderEntry]            // all received headers, sensitive values redacted
+  cookieNames: List[String],           // never the cookie values
+  headers: List[HeaderEntry]           // all received headers, sensitive values redacted
 )
 
 case class HeaderEntry(name: String, value: String)
@@ -57,8 +57,7 @@ case class IpDetails(
   reverseDns: Option[String]
 )
 
-/** The client connection as seen by the client : when spy is behind a reverse proxy, data comes from forwarding
-  * headers, the raw TCP peer (the proxy) being then described in ProxyDetails.
+/** The client connection as seen by the client : when spy is behind a reverse proxy, data comes from forwarding headers, the raw TCP peer (the proxy) being then described in ProxyDetails.
   */
 case class ConnectionDetails(
   remoteAddress: Option[String],
@@ -93,15 +92,15 @@ case class ForwardedElement(
 case class ProxyDetails(
   behindProxy: Boolean,
   hopsCount: Option[Int],
-  trustedPeer: Boolean,                     // TCP peer is a trusted proxy, so its forwarding headers are used
-  clientSideChain: List[String],            // forwarding chain on the client side of clientIP (client's own proxies), unverified
-  trustedChain: List[String],               // trusted proxies between clientIP and the TCP peer
-  peerAddress: Option[String],              // TCP peer of spy, the last proxy when behind a reverse proxy
+  trustedPeer: Boolean,          // TCP peer is a trusted proxy, so its forwarding headers are used
+  clientSideChain: List[String], // forwarding chain on the client side of clientIP (client's own proxies), unverified
+  trustedChain: List[String],    // trusted proxies between clientIP and the TCP peer
+  peerAddress: Option[String],   // TCP peer of spy, the last proxy when behind a reverse proxy
   peerPort: Option[Int],
   peerAddressDetails: Option[IpDetails],
-  peerProtocol: Option[String],             // HTTP version between the last proxy and spy
+  peerProtocol: Option[String],  // HTTP version between the last proxy and spy
   peerSecure: Option[Boolean],
-  upstreamUrl: Option[String],              // URL as received by spy from the last proxy
+  upstreamUrl: Option[String],   // URL as received by spy from the last proxy
   forwarded: List[ForwardedElement],
   xForwardedFor: List[String],
   xForwardedProto: Option[String],
@@ -234,8 +233,7 @@ case class CertificateInfo(
   fingerprintSha1: Option[String]
 )
 
-/** The client TLS session, either terminated by spy itself (source "connection") or by a reverse proxy which
-  * forwards its details through X-SSL-* headers (source "reverse-proxy").
+/** The client TLS session, either terminated by spy itself (source "connection") or by a reverse proxy which forwards its details through X-SSL-* headers (source "reverse-proxy").
   */
 case class TlsDetails(
   source: String,
@@ -243,7 +241,7 @@ case class TlsDetails(
   cipherSuite: Option[String],
   sessionId: Option[String],
   sessionReused: Option[Boolean],
-  serverNames: List[String], // SNI
+  serverNames: List[String],   // SNI
   alpn: Option[String],
   curve: Option[String],
   earlyData: Option[Boolean],

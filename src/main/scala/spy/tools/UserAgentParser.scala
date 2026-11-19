@@ -50,17 +50,17 @@ object UserAgentParser {
   )
 
   private val browsers: List[(String, Regex)] = List(
-    "Edge"             -> "\\bEdg(?:e|A|iOS)?/([\\d.]+)".r,
-    "Opera"            -> "\\b(?:OPR|Opera)/([\\d.]+)".r,
-    "Vivaldi"          -> "\\bVivaldi/([\\d.]+)".r,
-    "Yandex"           -> "\\bYaBrowser/([\\d.]+)".r,
-    "Samsung Internet" -> "\\bSamsungBrowser/([\\d.]+)".r,
-    "UC Browser"       -> "\\bUCBrowser/([\\d.]+)".r,
-    "Brave"            -> "\\bBrave/([\\d.]+)".r,
-    "Firefox"          -> "\\b(?:Firefox|FxiOS)/([\\d.]+)".r,
-    "Chromium"         -> "\\bChromium/([\\d.]+)".r,
-    "Chrome"           -> "\\b(?:Chrome|CriOS)/([\\d.]+)".r,
-    "Safari"           -> "\\bVersion/([\\d.]+).*\\bSafari/".r,
+    "Edge"              -> "\\bEdg(?:e|A|iOS)?/([\\d.]+)".r,
+    "Opera"             -> "\\b(?:OPR|Opera)/([\\d.]+)".r,
+    "Vivaldi"           -> "\\bVivaldi/([\\d.]+)".r,
+    "Yandex"            -> "\\bYaBrowser/([\\d.]+)".r,
+    "Samsung Internet"  -> "\\bSamsungBrowser/([\\d.]+)".r,
+    "UC Browser"        -> "\\bUCBrowser/([\\d.]+)".r,
+    "Brave"             -> "\\bBrave/([\\d.]+)".r,
+    "Firefox"           -> "\\b(?:Firefox|FxiOS)/([\\d.]+)".r,
+    "Chromium"          -> "\\bChromium/([\\d.]+)".r,
+    "Chrome"            -> "\\b(?:Chrome|CriOS)/([\\d.]+)".r,
+    "Safari"            -> "\\bVersion/([\\d.]+).*\\bSafari/".r,
     "Internet Explorer" -> "(?:\\bMSIE ([\\d.]+)|\\bTrident/.*\\brv:([\\d.]+))".r
   )
 
@@ -79,12 +79,14 @@ object UserAgentParser {
   )
 
   private def firstMatch(ua: String, candidates: List[(String, Regex)]): Option[(String, Option[String])] =
-    candidates.iterator.flatMap { case (name, re) =>
-      re.findFirstMatchIn(ua).map { m =>
-        val version = (1 to m.groupCount).iterator.flatMap(i => Option(m.group(i))).find(_.nonEmpty)
-        name -> version.map(_.replace('_', '.'))
+    candidates.iterator
+      .flatMap { case (name, re) =>
+        re.findFirstMatchIn(ua).map { m =>
+          val version = (1 to m.groupCount).iterator.flatMap(i => Option(m.group(i))).find(_.nonEmpty)
+          name -> version.map(_.replace('_', '.'))
+        }
       }
-    }.nextOption()
+      .nextOption()
 
   def parse(ua: String): UserAgentDetails = {
     val bot    = botRE.findFirstIn(ua).isDefined

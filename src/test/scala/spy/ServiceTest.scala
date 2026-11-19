@@ -27,7 +27,6 @@ import spy.model.{ClientInfo, PrivacySignals, UserAgentDetails}
 import spy.routing.Health
 import spy.tools.JsonImplicits
 
-
 class ServiceTest extends AnyWordSpec with should.Matchers with ScalatestRouteTest with JsonImplicits {
 
   implicit val routeTestTimeout: RouteTestTimeout = RouteTestTimeout(10.seconds) // reverse DNS lookups may take time
@@ -35,7 +34,7 @@ class ServiceTest extends AnyWordSpec with should.Matchers with ScalatestRouteTe
   val routes = ServiceRoutes(ServiceDependencies.defaults).routes
 
   def peer(ip: String, port: Int = 40000) = AttributeKeys.remoteAddress -> RemoteAddress(InetAddress.getByName(ip), Some(port))
-  val localProxy                            = peer("127.0.0.1", 60036)
+  val localProxy                          = peer("127.0.0.1", 60036)
 
   "Web Echo Service" should {
     "Respond OK when pinged" in {
@@ -86,29 +85,31 @@ class ServiceTest extends AnyWordSpec with should.Matchers with ScalatestRouteTe
       }
     }
     "Respond to myclient request with an exhaustive set of information" in {
-      val request = Get("/api/myclient?a=1&a=2&b=x").withHeaders(
-        RawHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 Edg/124.0.2478.80"),
-        RawHeader("Forwarded", "for=\"[2001:db8:cafe::17]:4711\";proto=https;host=example.com, for=192.0.2.60"),
-        RawHeader("X-Forwarded-For", "203.0.113.195, 70.41.3.18, 150.172.238.178"),
-        RawHeader("Via", "1.1 proxy-a, 1.1 proxy-b"),
-        RawHeader("Accept-Language", "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7"),
-        RawHeader("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"),
-        RawHeader("Sec-CH-UA", "\"Chromium\";v=\"124\", \"Microsoft Edge\";v=\"124\", \"Not-A.Brand\";v=\"99\""),
-        RawHeader("Sec-CH-UA-Mobile", "?0"),
-        RawHeader("Sec-CH-UA-Platform", "\"Windows\""),
-        RawHeader("Sec-Fetch-Site", "none"),
-        RawHeader("Sec-Fetch-User", "?1"),
-        RawHeader("DNT", "1"),
-        RawHeader("Sec-GPC", "1"),
-        RawHeader("CF-IPCountry", "FR"),
-        RawHeader("CF-IPCity", "Paris"),
-        RawHeader("traceparent", "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"),
-        RawHeader("Authorization", "Bearer super-secret-token"),
-        RawHeader("Cookie", "session=very-secret; theme=dark")
-      ).addAttribute(localProxy._1, localProxy._2)
+      val request = Get("/api/myclient?a=1&a=2&b=x")
+        .withHeaders(
+          RawHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 Edg/124.0.2478.80"),
+          RawHeader("Forwarded", "for=\"[2001:db8:cafe::17]:4711\";proto=https;host=example.com, for=192.0.2.60"),
+          RawHeader("X-Forwarded-For", "203.0.113.195, 70.41.3.18, 150.172.238.178"),
+          RawHeader("Via", "1.1 proxy-a, 1.1 proxy-b"),
+          RawHeader("Accept-Language", "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7"),
+          RawHeader("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"),
+          RawHeader("Sec-CH-UA", "\"Chromium\";v=\"124\", \"Microsoft Edge\";v=\"124\", \"Not-A.Brand\";v=\"99\""),
+          RawHeader("Sec-CH-UA-Mobile", "?0"),
+          RawHeader("Sec-CH-UA-Platform", "\"Windows\""),
+          RawHeader("Sec-Fetch-Site", "none"),
+          RawHeader("Sec-Fetch-User", "?1"),
+          RawHeader("DNT", "1"),
+          RawHeader("Sec-GPC", "1"),
+          RawHeader("CF-IPCountry", "FR"),
+          RawHeader("CF-IPCity", "Paris"),
+          RawHeader("traceparent", "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"),
+          RawHeader("Authorization", "Bearer super-secret-token"),
+          RawHeader("Cookie", "session=very-secret; theme=dark")
+        )
+        .addAttribute(localProxy._1, localProxy._2)
       request ~> routes ~> check {
         import com.github.pjfanning.pekkohttpjsoniterscala.JsoniterScalaSupport.*
-        val raw = response.entity.asInstanceOf[HttpEntity.Strict].data.utf8String
+        val raw  = response.entity.asInstanceOf[HttpEntity.Strict].data.utf8String
         raw should not include "super-secret-token"
         raw should not include "very-secret"
         val info = responseAs[ClientInfo]
@@ -380,4 +381,3 @@ class ServiceTest extends AnyWordSpec with should.Matchers with ScalatestRouteTe
     }
   }
 }
-
