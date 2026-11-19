@@ -52,8 +52,11 @@ case class FileSystemStorageConfig(
 
 case class Behavior(
   fileSystemStorage: FileSystemStorageConfig,
-  reverseDnsLookup: Boolean
-) derives ConfigReader
+  reverseDnsLookup: Boolean,
+  trustedProxies: String // comma separated networks (CIDR) of the reverse proxies whose forwarding headers are trusted
+) derives ConfigReader {
+  def trustedProxiesList: List[String] = trustedProxies.split(",").toList.map(_.trim).filter(_.nonEmpty)
+}
 
 // Automatically populated by the build process from a generated config file
 case class SpyMetaConfig(

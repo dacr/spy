@@ -34,6 +34,9 @@ class ServiceTest extends AnyWordSpec with should.Matchers with ScalatestRouteTe
 
   val routes = ServiceRoutes(ServiceDependencies.defaults).routes
 
+  def peer(ip: String, port: Int = 40000) = AttributeKeys.remoteAddress -> RemoteAddress(InetAddress.getByName(ip), Some(port))
+  val localProxy                            = peer("127.0.0.1", 60036)
+
   "Web Echo Service" should {
     "Respond OK when pinged" in {
       Get("/health") ~> routes ~> check {
@@ -102,15 +105,18 @@ class ServiceTest extends AnyWordSpec with should.Matchers with ScalatestRouteTe
         RawHeader("traceparent", "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"),
         RawHeader("Authorization", "Bearer super-secret-token"),
         RawHeader("Cookie", "session=very-secret; theme=dark")
-      )
+      ).addAttribute(localProxy._1, localProxy._2)
       request ~> routes ~> check {
         import com.github.pjfanning.pekkohttpjsoniterscala.JsoniterScalaSupport.*
         val raw = response.entity.asInstanceOf[HttpEntity.Strict].data.utf8String
         raw should not include "super-secret-token"
         raw should not include "very-secret"
         val info = responseAs[ClientInfo]
-        info.clientIP shouldBe Some("2001:db8:cafe:0:0:0:0:17")
+        // right-most untrusted element of the chain, the left part being only claimed
+        info.clientIP shouldBe Some("192.0.2.60")
         info.clientIPSource shouldBe Some("Forwarded")
+        info.proxy.clientSideChain shouldBe List("[2001:db8:cafe::17]:4711")
+        info.proxy.trustedPeer shouldBe true
         info.clientIPDetails.map(_.documentation) shouldBe Some(true)
         info.clientIPDetails.map(_.publiclyRoutable) shouldBe Some(false)
         info.proxy.behindProxy shouldBe true
@@ -246,6 +252,7 @@ class ServiceTest extends AnyWordSpec with should.Matchers with ScalatestRouteTe
           RawHeader("X-SSL-Client-I-DN", "CN=Example CA"),
           RawHeader("X-SSL-Client-Serial", "01AB")
         )
+        .addAttribute(localProxy._1, localProxy._2)
       request ~> routes ~> check {
         import com.github.pjfanning.pekkohttpjsoniterscala.JsoniterScalaSupport.*
         val tls = responseAs[ClientInfo].tls.get
@@ -301,8 +308,68 @@ class ServiceTest extends AnyWordSpec with should.Matchers with ScalatestRouteTe
         info.proxy.peerAddress shouldBe None
       }
     }
+    "Not be fooled by a forged X-Forwarded-For appended to by the reverse proxy" in {
+      Get("/api/myclient")
+        .withHeaders(RawHeader("X-Forwarded-For", "8.8.8.8, 203.0.113.50"), RawHeader("X-Real-IP", "203.0.113.50"))
+        .addAttribute(localProxy._1, localProxy._2) ~> routes ~> check {
+        import com.github.pjfanning.pekkohttpjsoniterscala.JsoniterScalaSupport.*
+        val info = responseAs[ClientInfo]
+        info.clientIP shouldBe Some("203.0.113.50")
+        info.clientIPSource shouldBe Some("X-Forwarded-For")
+        info.proxy.clientSideChain shouldBe List("8.8.8.8")
+        info.proxy.trustedChain shouldBe Nil
+      }
+    }
+    "Keep the proxy chain of a client using its own HTTP proxy" in {
+      Get("/api/myclient")
+        .withHeaders(RawHeader("X-Forwarded-For", "192.168.1.15, 198.51.100.7"), RawHeader("Via", "1.1 squid"))
+        .addAttribute(localProxy._1, localProxy._2) ~> routes ~> check {
+        import com.github.pjfanning.pekkohttpjsoniterscala.JsoniterScalaSupport.*
+        val info = responseAs[ClientInfo]
+        info.clientIP shouldBe Some("198.51.100.7")
+        info.proxy.clientSideChain shouldBe List("192.168.1.15")
+        info.proxy.xForwardedFor shouldBe List("192.168.1.15", "198.51.100.7")
+        info.proxy.via shouldBe List("1.1 squid")
+      }
+    }
+    "Skip every trusted proxy of the chain" in {
+      Get("/api/myclient")
+        .withHeaders(RawHeader("X-Forwarded-For", "203.0.113.1, 10.0.0.2"))
+        .addAttribute(AttributeKeys.remoteAddress, RemoteAddress(InetAddress.getByName("10.0.0.3"), Some(40000))) ~> routes ~> check {
+        import com.github.pjfanning.pekkohttpjsoniterscala.JsoniterScalaSupport.*
+        val info = responseAs[ClientInfo]
+        info.clientIP shouldBe Some("203.0.113.1")
+        info.proxy.trustedChain shouldBe List("10.0.0.2")
+        info.proxy.peerAddress shouldBe Some("10.0.0.3")
+      }
+    }
+    "Ignore forwarding headers sent by an untrusted peer" in {
+      Get("/api/myclient")
+        .withHeaders(RawHeader("X-Forwarded-For", "8.8.8.8"), RawHeader("X-Real-IP", "8.8.4.4"), RawHeader("X-SSL-Protocol", "TLSv1.3"))
+        .addAttribute(AttributeKeys.remoteAddress, RemoteAddress(InetAddress.getByName("198.51.100.9"), Some(40000))) ~> routes ~> check {
+        import com.github.pjfanning.pekkohttpjsoniterscala.JsoniterScalaSupport.*
+        val info = responseAs[ClientInfo]
+        info.clientIP shouldBe Some("198.51.100.9")
+        info.clientIPSource shouldBe Some("connection")
+        info.connection.viaReverseProxy shouldBe false
+        info.tls shouldBe None
+        info.proxy.trustedPeer shouldBe false
+        info.proxy.behindProxy shouldBe true
+        info.proxy.clientSideChain shouldBe List("8.8.8.8")
+      }
+    }
+    "Accept custom trusted proxies networks" in {
+      val extractor = spy.tools.ClientInfoExtractor(reverseDnsLookup = false, trustedProxies = List("203.0.113.0/24", "2001:db8::1"))
+      extractor.isTrustedProxy(InetAddress.getByName("203.0.113.77")) shouldBe true
+      extractor.isTrustedProxy(InetAddress.getByName("::ffff:203.0.113.77")) shouldBe true
+      extractor.isTrustedProxy(InetAddress.getByName("2001:db8::1")) shouldBe true
+      extractor.isTrustedProxy(InetAddress.getByName("2001:db8::2")) shouldBe false
+      extractor.isTrustedProxy(InetAddress.getByName("127.0.0.1")) shouldBe false
+    }
     "Detect command line clients" in {
-      Get("/api/myclient").withHeaders(RawHeader("User-Agent", "curl/8.11.1"), RawHeader("X-Real-IP", "10.1.2.3")) ~> routes ~> check {
+      Get("/api/myclient")
+        .withHeaders(RawHeader("User-Agent", "curl/8.11.1"), RawHeader("X-Real-IP", "10.1.2.3"))
+        .addAttribute(localProxy._1, localProxy._2) ~> routes ~> check {
         import com.github.pjfanning.pekkohttpjsoniterscala.JsoniterScalaSupport.*
         val info = responseAs[ClientInfo]
         info.userAgentDetails shouldBe Some(UserAgentDetails(Some("curl"), Some("8.11.1"), None, None, None, Some("cli"), false))

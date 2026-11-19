@@ -63,7 +63,10 @@ case class SpyRouting(dependencies: ServiceDependencies) extends Routing with Da
     Right(ipStr)
   }
 
-  val clientInfoExtractor = ClientInfoExtractor(reverseDnsLookup = dependencies.config.spy.behavior.reverseDnsLookup)
+  val clientInfoExtractor = ClientInfoExtractor(
+    reverseDnsLookup = dependencies.config.spy.behavior.reverseDnsLookup,
+    trustedProxies = dependencies.config.spy.behavior.trustedProxiesList
+  )
 
   def getMyClient(request: ServerRequest): Future[Either[Unit, ClientInfo]] =
     clientInfoExtractor.extract(request).map { clientInfo =>

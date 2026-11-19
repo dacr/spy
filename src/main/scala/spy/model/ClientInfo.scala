@@ -32,7 +32,7 @@ case class ClientInfo(
   navigation: NavigationDetails,
   privacy: PrivacySignals,
   tracing: TracingDetails,
-  tls: Option[TlsDetails],              // only for HTTPS connections terminated by this service
+  tls: Option[TlsDetails],              // terminated by spy itself, or forwarded by a trusted reverse proxy
   authorizationScheme: Option[String],  // never the credentials themselves
   proxyAuthorizationScheme: Option[String],
   cookieNames: List[String],            // never the cookie values
@@ -93,6 +93,9 @@ case class ForwardedElement(
 case class ProxyDetails(
   behindProxy: Boolean,
   hopsCount: Option[Int],
+  trustedPeer: Boolean,                     // TCP peer is a trusted proxy, so its forwarding headers are used
+  clientSideChain: List[String],            // forwarding chain on the client side of clientIP (client's own proxies), unverified
+  trustedChain: List[String],               // trusted proxies between clientIP and the TCP peer
   peerAddress: Option[String],              // TCP peer of spy, the last proxy when behind a reverse proxy
   peerPort: Option[Int],
   peerAddressDetails: Option[IpDetails],

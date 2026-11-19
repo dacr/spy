@@ -38,12 +38,35 @@ import scala.util.Try
   *
   * @param reverseDnsLookup
   *   enable reverse DNS resolution of the client IP addresses
+  * @param trustedProxies
+  *   networks (CIDR, or bare addresses) of the reverse proxies whose forwarding headers are trusted
   * @param reverseDnsTimeoutMs
   *   max time spent in a reverse DNS resolution
   */
-class ClientInfoExtractor(reverseDnsLookup: Boolean, reverseDnsTimeoutMs: Long = 2000L) {
+class ClientInfoExtractor(
+  reverseDnsLookup: Boolean,
+  trustedProxies: List[String] = ClientInfoExtractor.defaultTrustedProxies,
+  reverseDnsTimeoutMs: Long = 2000L
+) {
 
   private val dnsExecutor = Executors.newVirtualThreadPerTaskExecutor()
+
+  private val trustedNetworks: List[(Array[Byte], Int)] = trustedProxies.map(_.trim).filter(_.nonEmpty).map { cidr =>
+    val (ip, bits) = cidr.split("/", 2) match {
+      case Array(ip, bits) => ip -> bits.trim.toIntOption
+      case Array(ip)       => ip -> None
+    }
+    val net        = Try(InetAddress.ofLiteral(ip.trim).getAddress).getOrElse(throw IllegalArgumentException(s"Invalid trusted proxy address : $cidr"))
+    val prefix     = bits.getOrElse(net.length * 8)
+    if (prefix < 0 || prefix > net.length * 8) throw IllegalArgumentException(s"Invalid trusted proxy prefix length : $cidr")
+    net -> prefix
+  }
+
+  /** is this address the one of a reverse proxy whose forwarding headers can be trusted */
+  def isTrustedProxy(addr: InetAddress): Boolean = {
+    val effective = ipv4Mapped(addr).getOrElse(addr)
+    trustedNetworks.exists((net, bits) => inRange(effective.getAddress, net, bits))
+  }
 
   // -------------------------------------------------------------------------------------------------------------------
   // Generic header helpers
@@ -171,9 +194,10 @@ class ClientInfoExtractor(reverseDnsLookup: Boolean, reverseDnsTimeoutMs: Long =
   private val defaultPorts      = Map("http" -> 80, "ws" -> 80, "https" -> 443, "wss" -> 443)
   private val cfVisitorSchemeRE = "\"scheme\"\\s*:\\s*\"(\\w+)\"".r
 
-  private def inRange(addr: InetAddress, prefix: String, bits: Int): Boolean = {
-    val net = InetAddress.ofLiteral(prefix).getAddress
-    val a   = addr.getAddress
+  private def inRange(addr: InetAddress, prefix: String, bits: Int): Boolean =
+    inRange(addr.getAddress, InetAddress.ofLiteral(prefix).getAddress, bits)
+
+  private def inRange(a: Array[Byte], net: Array[Byte], bits: Int): Boolean = {
     a.length == net.length && {
       val full = bits / 8
       val rem  = bits % 8
@@ -309,8 +333,8 @@ class ClientInfoExtractor(reverseDnsLookup: Boolean, reverseDnsTimeoutMs: Long =
   // -------------------------------------------------------------------------------------------------------------------
   // Main extraction
 
-  private val clientIPHeaders = List(
-    "X-Forwarded-For",
+  /** headers set by a trusted proxy to the single address of its client, used when there is no forwarding chain */
+  private val singleClientIPHeaders = List(
     "X-Real-IP",
     "True-Client-IP",
     "CF-Connecting-IP",
@@ -338,20 +362,40 @@ class ClientInfoExtractor(reverseDnsLookup: Boolean, reverseDnsTimeoutMs: Long =
     val via       = hList(req, "Via")
 
     // -------- best client IP guess
-    val fromForwarded = forwarded.iterator.flatMap(_.forValue).flatMap(normalizeIP).nextOption().map(_ -> "Forwarded")
-    val fromHeaders   = clientIPHeaders.iterator.flatMap { name =>
-      hList(req, name).headOption.flatMap(normalizeIP).map(_ -> name)
-    }.nextOption()
-    val fromRemote    = remoteAddress.map(_ -> "connection")
-    val clientIP      = fromForwarded.orElse(fromHeaders).orElse(fromRemote)
+    // Forwarding headers are only honoured when the TCP peer is a trusted proxy. Each proxy appends the
+    // address it received the request from, so the chain is walked from the right, skipping trusted
+    // proxies : the first other address is the client as seen by the edge proxy. What is on its left was
+    // added by proxies on the client side (its HTTP proxy for example) or forged : kept but unverified.
+    val peerTrusted              = remoteAddress.exists(isTrustedProxy)
+    val (chainSource, chain)     =
+      if (forwarded.nonEmpty) "Forwarded" -> forwarded.map(_.forValue.getOrElse(""))
+      else "X-Forwarded-For"              -> xff
+    val clientIndex: Option[Int] = Option.when(peerTrusted && chain.nonEmpty) {
+      chain.lastIndexWhere(v => !normalizeIP(v).exists(isTrustedProxy)).max(0)
+    }
+    val clientForwarded          = clientIndex.filter(_ => forwarded.nonEmpty).map(forwarded)
+    val fromChain                = clientIndex.flatMap(i => normalizeIP(chain(i))).map(_ -> chainSource)
+    val fromHeaders              = Option.when(peerTrusted) {
+      singleClientIPHeaders.iterator.flatMap { name =>
+        hList(req, name).headOption.flatMap(normalizeIP).map(_ -> name)
+      }.nextOption()
+    }.flatten
+    val fromRemote               = remoteAddress.map(_ -> "connection")
+    val clientIP                 = fromChain.orElse(fromHeaders).orElse(fromRemote)
+    val clientSideChain          = clientIndex match {
+      case Some(i)            => chain.take(i)
+      case None if peerTrusted => Nil
+      case None               => chain // not from a trusted proxy, nothing in it can be verified
+    }
+    val trustedChain             = clientIndex.map(i => chain.drop(i + 1)).getOrElse(Nil)
 
-    // forwarding headers are giving the client IP, so the TCP peer is a reverse proxy
+    // a trusted proxy gave the client IP, so the TCP peer is a reverse proxy
     val proxied = clientIP.exists(_._2 != "connection")
 
     val clientPort =
       if (!proxied) remotePort
       else
-        forwarded.headOption
+        clientForwarded
           .flatMap(_.forValue)
           .flatMap(portPart)
           .orElse(List("X-Real-Port", "X-Client-Port", "X-Forwarded-Client-Port").iterator.flatMap(n => hInt(req, n)).nextOption())
@@ -366,6 +410,9 @@ class ClientInfoExtractor(reverseDnsLookup: Boolean, reverseDnsTimeoutMs: Long =
       upstreamUrl = None,
       behindProxy = forwarded.nonEmpty || xff.nonEmpty || via.nonEmpty || proxied,
       hopsCount = Some(List(forwarded.size, xff.size, via.size).max).filter(_ > 0),
+      trustedPeer = peerTrusted,
+      clientSideChain = clientSideChain,
+      trustedChain = trustedChain,
       forwarded = forwarded,
       xForwardedFor = xff,
       xForwardedProto = h(req, "X-Forwarded-Proto"),
@@ -645,12 +692,12 @@ class ClientInfoExtractor(reverseDnsLookup: Boolean, reverseDnsTimeoutMs: Long =
     val (scheme, host, port, path) =
       if (!proxied) (uri.scheme, uri.host, uri.port, upstreamPath)
       else {
-        val scheme  = forwarded.headOption.flatMap(_.proto)
+        val scheme  = clientForwarded.flatMap(_.proto)
           .orElse(hList(req, "X-Forwarded-Proto").headOption)
           .orElse(h(req, "CF-Visitor").flatMap(cfVisitorSchemeRE.findFirstMatchIn).map(_.group(1)))
           .map(_.toLowerCase)
           .orElse(uri.scheme)
-        val rawHost = forwarded.headOption.flatMap(_.host).orElse(hList(req, "X-Forwarded-Host").headOption)
+        val rawHost = clientForwarded.flatMap(_.host).orElse(hList(req, "X-Forwarded-Host").headOption)
         val host    = rawHost.map(hostPart).orElse(uri.host)
         val port    = hList(req, "X-Forwarded-Port").headOption.flatMap(_.toIntOption)
           .orElse(rawHost.flatMap(portPart))
@@ -753,4 +800,19 @@ class ClientInfoExtractor(reverseDnsLookup: Boolean, reverseDnsTimeoutMs: Long =
       headers = headers
     )
   }
+}
+
+object ClientInfoExtractor {
+
+  /** loopback, private, link-local and unique-local networks : where a reverse proxy usually is */
+  val defaultTrustedProxies: List[String] = List(
+    "127.0.0.0/8",
+    "::1/128",
+    "10.0.0.0/8",
+    "172.16.0.0/12",
+    "192.168.0.0/16",
+    "169.254.0.0/16",
+    "fc00::/7",
+    "fe80::/10"
+  )
 }

@@ -21,18 +21,26 @@ scala-cli --dep fr.janalyse::spy:1.0.7 -e 'spy.Main.main(args)'
 | SPY_URL              | How this service is known from outside | "http://127.0.0.1:8080" |
 | SPY_STORE_PATH       | Where data is stored                   | "/tmp/spy-data"         |
 | SPY_REVERSE_DNS_LOOKUP | Resolve client IPs to host names     | true                    |
+| SPY_TRUSTED_PROXIES  | Comma separated networks (CIDR) of the reverse proxies whose forwarding headers are trusted | loopback, private, link-local and unique-local networks |
 
 ## Behind a reverse proxy
 
-spy works with or without a reverse proxy, the mode is decided for each request : as soon as a
-forwarding header (`Forwarded`, `X-Forwarded-For`, `X-Real-IP`, `CF-Connecting-IP`, ...) gives the
-client IP, the TCP peer is considered to be a reverse proxy. `/api/myclient` then describes the
-client side connection (`connection`, `request`, `tls`) from the forwarded headers, and the proxy
-hop itself in `proxy` (`peerAddress`, `peerProtocol`, `upstreamUrl`, ...).
+spy works with or without a reverse proxy, the mode is decided for each request : forwarding
+headers (`Forwarded`, `X-Forwarded-*`, `X-Real-IP`, `CF-Connecting-IP`, `X-SSL-*`, ...) are only
+honoured when the TCP peer belongs to `SPY_TRUSTED_PROXIES`, from any other peer they are reported
+but ignored. When they are honoured, `/api/myclient` describes the client side connection
+(`connection`, `request`, `tls`) from the forwarded headers, and the proxy hop itself in `proxy`
+(`peerAddress`, `peerProtocol`, `upstreamUrl`, ...).
 
-Forwarding headers are trusted, so the proxy must **replace** them rather than append to what the
-client sent. The client connection details only the proxy can see are read from these headers
-(first name is the preferred one, the others are accepted aliases) :
+The client IP is taken from the `Forwarded` or `X-Forwarded-For` chain, walked from the right while
+the addresses belong to trusted proxies (`proxy.trustedChain`) : the first other address is the
+client as seen by your edge proxy, which can't be forged. What is on its left (`proxy.clientSideChain`)
+was added by proxies on the client side, its HTTP proxy for example, or forged by the client : it is
+shown but never used nor resolved. So keep the usual *appending* proxy configuration
+(`$proxy_add_x_forwarded_for` with nginx), the whole chain is kept.
+
+The client connection details only the proxy can see are read from these headers (first name is the
+preferred one, the others are accepted aliases) :
 
 | Information                    | Headers                                                     | nginx variable              |
 |--------------------------------|-------------------------------------------------------------|-----------------------------|
@@ -62,7 +70,7 @@ location / {
   proxy_pass http://127.0.0.1:8080/;
   proxy_set_header Host                     $host;
   proxy_set_header X-Real-IP                $remote_addr;
-  proxy_set_header X-Forwarded-For          $remote_addr;
+  proxy_set_header X-Forwarded-For          $proxy_add_x_forwarded_for;
   proxy_set_header X-Forwarded-Proto        $scheme;
   proxy_set_header X-Forwarded-Host         $host;
   proxy_set_header X-Real-Port              $remote_port;
