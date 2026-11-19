@@ -345,6 +345,59 @@ class ClientInfoExtractor(
     "X-Original-Forwarded-For"
   )
 
+  private case class ClientResolution(
+    peerTrusted: Boolean,
+    clientForwarded: Option[ForwardedElement], // Forwarded element describing the client, if any
+    clientIP: Option[(InetAddress, String)],   // address and where it comes from
+    clientSideChain: List[String],
+    trustedChain: List[String]
+  )
+
+  /** Forwarding headers are only honoured when the TCP peer is a trusted proxy. Each proxy appends the address it received the request from, so the chain is walked from the right, skipping trusted
+    * proxies : the first other address is the client as seen by the edge proxy. What is on its left was added by proxies on the client side (its HTTP proxy for example) or forged : kept but
+    * unverified.
+    */
+  private def resolveClient(
+    req: ServerRequest,
+    remoteAddress: Option[InetAddress],
+    forwarded: List[ForwardedElement],
+    xff: List[String]
+  ): ClientResolution = {
+    val peerTrusted              = remoteAddress.exists(isTrustedProxy)
+    val (chainSource, chain)     =
+      if (forwarded.nonEmpty) "Forwarded" -> forwarded.map(_.forValue.getOrElse(""))
+      else "X-Forwarded-For"              -> xff
+    val clientIndex: Option[Int] = Option.when(peerTrusted && chain.nonEmpty) {
+      chain.lastIndexWhere(v => !normalizeIP(v).exists(isTrustedProxy)).max(0)
+    }
+    val fromChain                = clientIndex.flatMap(i => normalizeIP(chain(i))).map(_ -> chainSource)
+    val fromHeaders              = Option
+      .when(peerTrusted) {
+        singleClientIPHeaders.iterator
+          .flatMap(name => hList(req, name).headOption.flatMap(normalizeIP).map(_ -> name))
+          .nextOption()
+      }
+      .flatten
+    ClientResolution(
+      peerTrusted = peerTrusted,
+      clientForwarded = clientIndex.filter(_ => forwarded.nonEmpty).map(forwarded),
+      clientIP = fromChain.orElse(fromHeaders).orElse(remoteAddress.map(_ -> "connection")),
+      clientSideChain = clientIndex match {
+        case Some(i)             => chain.take(i)
+        case None if peerTrusted => Nil
+        case None                => chain // not from a trusted proxy, nothing in it can be verified
+      },
+      trustedChain = clientIndex.map(i => chain.drop(i + 1)).getOrElse(Nil)
+    )
+  }
+
+  /** The client IP only, with the same trusted proxies rules as extract, without any lookup */
+  def clientIP(req: ServerRequest): Option[String] = {
+    val remoteAddress = req.connectionInfo.remote.flatMap(r => Option(r.getAddress))
+    val forwarded     = parseForwarded(headerValues(req, "Forwarded"))
+    resolveClient(req, remoteAddress, forwarded, hList(req, "X-Forwarded-For")).clientIP.map(_._1.getHostAddress)
+  }
+
   def extract(req: ServerRequest)(using ExecutionContext): Future[ClientInfo] = {
     val pekkoContext = req.underlying match {
       case ctx: RequestContext => Some(ctx)
@@ -362,36 +415,8 @@ class ClientInfoExtractor(
     val via       = hList(req, "Via")
 
     // -------- best client IP guess
-    // Forwarding headers are only honoured when the TCP peer is a trusted proxy. Each proxy appends the
-    // address it received the request from, so the chain is walked from the right, skipping trusted
-    // proxies : the first other address is the client as seen by the edge proxy. What is on its left was
-    // added by proxies on the client side (its HTTP proxy for example) or forged : kept but unverified.
-    val peerTrusted              = remoteAddress.exists(isTrustedProxy)
-    val (chainSource, chain)     =
-      if (forwarded.nonEmpty) "Forwarded" -> forwarded.map(_.forValue.getOrElse(""))
-      else "X-Forwarded-For"              -> xff
-    val clientIndex: Option[Int] = Option.when(peerTrusted && chain.nonEmpty) {
-      chain.lastIndexWhere(v => !normalizeIP(v).exists(isTrustedProxy)).max(0)
-    }
-    val clientForwarded          = clientIndex.filter(_ => forwarded.nonEmpty).map(forwarded)
-    val fromChain                = clientIndex.flatMap(i => normalizeIP(chain(i))).map(_ -> chainSource)
-    val fromHeaders              = Option
-      .when(peerTrusted) {
-        singleClientIPHeaders.iterator
-          .flatMap { name =>
-            hList(req, name).headOption.flatMap(normalizeIP).map(_ -> name)
-          }
-          .nextOption()
-      }
-      .flatten
-    val fromRemote               = remoteAddress.map(_ -> "connection")
-    val clientIP                 = fromChain.orElse(fromHeaders).orElse(fromRemote)
-    val clientSideChain          = clientIndex match {
-      case Some(i)             => chain.take(i)
-      case None if peerTrusted => Nil
-      case None                => chain // not from a trusted proxy, nothing in it can be verified
-    }
-    val trustedChain             = clientIndex.map(i => chain.drop(i + 1)).getOrElse(Nil)
+    val ClientResolution(peerTrusted, clientForwarded, clientIP, clientSideChain, trustedChain) =
+      resolveClient(req, remoteAddress, forwarded, xff)
 
     // a trusted proxy gave the client IP, so the TCP peer is a reverse proxy
     val proxied = clientIP.exists(_._2 != "connection")

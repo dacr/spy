@@ -74,6 +74,36 @@ class ServiceTest extends AnyWordSpec with should.Matchers with ScalatestRouteTe
         responseAs[String] shouldBe "unknown" // Since no headers provided
       }
     }
+    "Return the same IP from myip as from myclient, not fooled by forged forwarding headers" in {
+      Get("/api/myip")
+        .withHeaders(RawHeader("X-Forwarded-For", "8.8.8.8, 203.0.113.50"))
+        .addAttribute(localProxy._1, localProxy._2) ~> routes ~> check {
+        import com.github.pjfanning.pekkohttpjsoniterscala.JsoniterScalaSupport.*
+        responseAs[String] shouldBe "203.0.113.50"
+      }
+      Get("/api/myip")
+        .withHeaders(RawHeader("X-Forwarded-For", "8.8.8.8"))
+        .addAttribute(AttributeKeys.remoteAddress, RemoteAddress(InetAddress.getByName("198.51.100.9"), Some(40000))) ~> routes ~> check {
+        import com.github.pjfanning.pekkohttpjsoniterscala.JsoniterScalaSupport.*
+        responseAs[String] shouldBe "198.51.100.9"
+      }
+    }
+    "Serve an OpenAPI documentation with the service version, field descriptions and no generic 400 response" in {
+      Get("/docs/docs.yaml") ~> routes ~> check {
+        val yaml = responseAs[String]
+        yaml should include(s"version: ${ServiceDependencies.defaults.config.spy.metaInfo.version}")
+        yaml should not include "1.1.0"
+        yaml should not include "Invalid value"
+        yaml should include("clientSideChain")
+        yaml should include("description: trusted proxies between clientIP and the TCP peer")
+      }
+    }
+    "Build site URLs without double slashes" in {
+      val site = SiteConfig(prefix = Some("/spy/"), url = "https://spy.example.com/")
+      site.baseURL shouldBe "https://spy.example.com/spy"
+      site.swaggerUserInterfaceURL shouldBe "https://spy.example.com/spy/docs"
+      SiteConfig(prefix = Some(""), url = "https://spy.example.com/").swaggerUserInterfaceURL shouldBe "https://spy.example.com/docs"
+    }
     "Respond to myclient request without any information" in {
       Get("/api/myclient") ~> routes ~> check {
         import com.github.pjfanning.pekkohttpjsoniterscala.JsoniterScalaSupport.*

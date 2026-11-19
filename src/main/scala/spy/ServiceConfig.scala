@@ -33,10 +33,10 @@ case class SiteConfig(
   prefix: Option[String],
   url: String
 ) derives ConfigReader {
-  val cleanedPrefix           = prefix.map(_.trim.replaceAll("/+$", "")).filter(_.size > 0)
+  val cleanedPrefix           = prefix.map(_.trim.replaceAll("^/+|/+$", "")).filter(_.size > 0)
   val cleanedURL              = url.trim.replaceAll("/+$", "")
   val absolutePrefix          = cleanedPrefix.map(p => s"/$p").getOrElse("")
-  val baseURL                 = url + absolutePrefix
+  val baseURL                 = cleanedURL + absolutePrefix
   val apiURL                  = baseURL + "/api"
   val swaggerUserInterfaceURL = s"$baseURL/docs"
   val swaggerURL              = s"$baseURL/docs/docs.yaml"

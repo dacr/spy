@@ -24,6 +24,7 @@ import sttp.tapir.*
 import sttp.tapir.json.jsoniter.*
 import sttp.tapir.model.ServerRequest
 import sttp.tapir.server.pekkohttp.PekkoHttpServerInterpreter
+import sttp.tapir.docs.openapi.OpenAPIDocsOptions
 import sttp.tapir.swagger.bundle.SwaggerInterpreter
 import sttp.tapir.generic.auto.*
 import java.util.UUID
@@ -57,8 +58,8 @@ case class SpyRouting(dependencies: ServiceDependencies) extends Routing with Da
     )
   }
 
-  def getMyIp(ip: Option[String]): Future[Either[Unit, String]] = Future.successful {
-    val ipStr = ip.getOrElse("unknown")
+  def getMyIp(request: ServerRequest): Future[Either[Unit, String]] = Future.successful {
+    val ipStr = clientInfoExtractor.clientIP(request).getOrElse("unknown")
     logger.info(s"IP returned to client : $ipStr")
     Right(ipStr)
   }
@@ -77,21 +78,23 @@ case class SpyRouting(dependencies: ServiceDependencies) extends Routing with Da
   // Endpoints
   val infoEndpoint = endpoint.get
     .in("api" / "info")
-    .out(jsonBody[ServiceInfo])
+    .out(jsonBody[ServiceInfo].description("service instance information"))
     .name("info")
     .description("General information about the service")
 
   val myipEndpoint = endpoint.get
     .in("api" / "myip")
-    .in(clientIp)
-    .out(jsonBody[String])
+    .in(extractFromRequest(identity))
+    .out(jsonBody[String].description("client IP address, or \"unknown\"").example("203.0.113.42"))
     .name("myip")
-    .description("Get my ip address")
+    .description(
+      "Get my ip address, the same as clientIP in myclient : forwarding headers are only used when sent by a trusted reverse proxy"
+    )
 
   val myclientEndpoint = endpoint.get
     .in("api" / "myclient")
     .in(extractFromRequest(identity))
-    .out(jsonBody[ClientInfo])
+    .out(jsonBody[ClientInfo].description("everything learnt about the client, absent information is omitted"))
     .name("myclient")
     .description(
       "Get everything which can be learnt about my http client : network & proxies, user agent, client hints, " +
@@ -101,12 +104,16 @@ case class SpyRouting(dependencies: ServiceDependencies) extends Routing with Da
 
   // Routes
   val infoRoute     = PekkoHttpServerInterpreter().toRoute(infoEndpoint.serverLogic(_ => getServiceInfo))
-  val myipRoute     = PekkoHttpServerInterpreter().toRoute(myipEndpoint.serverLogic(ip => getMyIp(ip)))
+  val myipRoute     = PekkoHttpServerInterpreter().toRoute(myipEndpoint.serverLogic(getMyIp))
   val myclientRoute = PekkoHttpServerInterpreter().toRoute(myclientEndpoint.serverLogic(getMyClient))
 
   val endpoints = List(infoEndpoint, myipEndpoint, myclientEndpoint)
 
-  val swaggerEndpoints = SwaggerInterpreter().fromEndpoints[Future](endpoints, "spy service", "1.1.0")
+  // no input of these endpoints can fail to decode : no generic "400 Invalid value" response in the documentation
+  private val docsOptions = OpenAPIDocsOptions.default.copy(defaultDecodeFailureOutput = _ => None)
+
+  val swaggerEndpoints = SwaggerInterpreter(openAPIInterpreterOptions = docsOptions)
+    .fromEndpoints[Future](endpoints, "spy service", meta.version)
   val swaggerRoute     = PekkoHttpServerInterpreter().toRoute(swaggerEndpoints)
 
   override def routes: Route = {
