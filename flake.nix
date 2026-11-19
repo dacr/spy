@@ -1,6 +1,6 @@
 {
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.11";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
     utils.url = "github:numtide/flake-utils";
     sbt.url = "github:zaninime/sbt-derivation";
     sbt.inputs.nixpkgs.follows = "nixpkgs";
@@ -10,11 +10,18 @@
   utils.lib.eachDefaultSystem (system:
   let
     pkgs = import nixpkgs { inherit system; };
+    jdk = pkgs.jdk25_headless;
+    sbt-jdk = pkgs.sbt.override { jre = jdk; };
   in {
     # ---------------------------------------------------------------------------
     # nix develop
     devShells.default = pkgs.mkShell {
-      buildInputs = [pkgs.sbt pkgs.metals pkgs.jdk21 pkgs.hello];
+      buildInputs = [
+        (pkgs.sbt.override { jre = pkgs.jdk25; })
+        (pkgs.metals.override { jre = pkgs.jdk25; })
+        pkgs.jdk25
+        pkgs.hello
+      ];
     };
 
     # ---------------------------------------------------------------------------
@@ -22,11 +29,11 @@
     packages.default = sbt.mkSbtDerivation.${system} {
       pname = "nix-spy";
       version = builtins.elemAt (builtins.match ''[^"]+"(.*)".*'' (builtins.readFile ./version.sbt)) 0;
-      depsSha256 = "sha256-JPT8jnAap5tUu4oEUuBrMBuP/BWgi7NcKwiRjgZq2uA=";
+      depsSha256 = "sha256-8Fa/HVFME7EoHV9pjL6d5Q2RCzx/j2XnW/CalqSX+qo=";
 
       src = ./.;
 
-      buildInputs = [pkgs.sbt pkgs.jdk21_headless pkgs.makeWrapper];
+      buildInputs = [sbt-jdk jdk pkgs.makeWrapper];
 
       buildPhase = "sbt Universal/packageZipTarball";
 
@@ -39,7 +46,7 @@
               pkgs.gawk
               pkgs.coreutils
               pkgs.bash
-              pkgs.jdk21_headless
+              jdk
             ]}
       '';
     };
