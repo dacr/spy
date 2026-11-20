@@ -30,7 +30,7 @@
     packages.default = (sbt.mkSbtDerivation.${system}.withOverrides { sbt = sbt-jdk; }) {
       pname = "nix-spy";
       version = builtins.elemAt (builtins.match ''[^"]+"(.*)".*'' (builtins.readFile ./version.sbt)) 0;
-      depsSha256 = "sha256-wOlafT3P2Nuaski9aDOQMA9bxTvudnziHoUbSDxotcM=";
+      depsSha256 = "sha256-a76pEL2KzrBHjti6c6zcPJkbwDPGnC6U97C+Ysy8Vx0=";
 
       src = ./.;
 
